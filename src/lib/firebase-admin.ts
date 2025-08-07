@@ -10,9 +10,14 @@ import * as admin from 'firebase-admin';
 const hasInitialized = admin.apps.length > 0;
 
 if (!hasInitialized) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (serviceAccountJson) {
         try {
-            const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+            // The service account JSON might be a base64 encoded string or a raw JSON string.
+            // This handles both cases to ensure it's parsed correctly in different environments.
+            const serviceAccount = JSON.parse(
+              Buffer.from(serviceAccountJson, 'base64').toString('utf-8')
+            );
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
             });
