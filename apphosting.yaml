@@ -5,3 +5,40 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+secretEnv:
+  - secret: FIREBASE_API_KEY
+    env: NEXT_PUBLIC_FIREBASE_API_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_APP_ID
+    env: NEXT_PUBLIC_FIREBASE_APP_ID
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_AUTH_DOMAIN
+    env: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_MESSAGING_SENDER_ID
+    env: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_PROJECT_ID
+    env: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_STORAGE_BUCKET
+    env: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    availability:
+      - BUILD
+      - RUNTIME
+  - secret: FIREBASE_SERVICE_ACCOUNT_JSON
+    availability:
+      - RUNTIME
+  - secret: CRON_SECRET
+    availability:
+      - RUNTIME
