@@ -4,12 +4,11 @@
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
 import { TripStatusTimeline } from '@/components/dashboard/TripStatusTimeline';
-import { cancelTripAction } from '@/lib/actions';
+import { cancelTripAction, getActiveTripForUserAction } from '@/lib/actions';
 import { useEffect, useState, startTransition } from 'react';
 import type { UserProfile, TripRequest } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal, Loader2, Plane, Trash2, UserCheck, Search, BellRing, Frown } from 'lucide-react';
-import { getCurrentUser, getActiveTripForUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -32,8 +31,12 @@ export default function DashboardPage() {
       }
       setIsLoadingUser(true);
       try {
-        const trip = await getActiveTripForUser(currentUser.id);
-        setActiveTrip(trip);
+        const result = await getActiveTripForUserAction(currentUser.id);
+        if (result.success) {
+          setActiveTrip(result.trip);
+        } else {
+          throw new Error(result.message || "Could not load your active trip details.");
+        }
       } catch (error: any) {
         console.error("Failed to fetch data for dashboard:", error);
         toast({
