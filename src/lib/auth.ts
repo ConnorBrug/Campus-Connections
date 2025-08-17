@@ -11,6 +11,9 @@ import {
   EmailAuthProvider,
   reauthenticateWithCredential,
   deleteUser,
+  setPersistence,
+  browserSessionPersistence,
+  browserLocalPersistence,
   type User as FirebaseUser
 } from 'firebase/auth';
 import {
@@ -84,8 +87,10 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
   }
 }
 
-export async function login(email: string, passwordInput: string): Promise<UserProfile> {
+export async function login(email: string, passwordInput: string, rememberMe: boolean): Promise<UserProfile> {
   'use client';
+  const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
+  await setPersistence(auth, persistence);
   const userCredential = await signInWithEmailAndPassword(auth, email, passwordInput);
   const user = userCredential.user;
   const userProfile = await getUserProfile(user.uid);
