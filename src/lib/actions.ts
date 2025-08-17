@@ -135,6 +135,20 @@ export async function submitTripDetailsAction(
     redirect(`/trip-submitted`);
 }
 
+export async function getActiveTripForUserAction(userId: string): Promise<{ success: boolean; trip: TripRequest | null; message?: string }> {
+    if (!userId) {
+        return { success: false, trip: null, message: "User not authenticated." };
+    }
+    try {
+        const trip = await getActiveTripForUser(userId);
+        return { success: true, trip: trip };
+    } catch (error) {
+        console.error("Error in getActiveTripForUserAction:", error);
+        return { success: false, trip: null, message: "Failed to fetch trip details." };
+    }
+}
+
+
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 

@@ -4,39 +4,40 @@
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
 import { TripStatusTimeline } from '@/components/dashboard/TripStatusTimeline';
-import { cancelTripAction } from '@/lib/actions';
+import { cancelTripAction, getActiveTripForUserAction } from '@/lib/actions';
 import { useEffect, useState, startTransition } from 'react';
 import type { UserProfile, TripRequest } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal, Loader2, Plane, Trash2, UserCheck, Search, BellRing, Frown } from 'lucide-react';
-import { getCurrentUser, getActiveTripForUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useApp } from '@/app/(app)/layout';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const { userProfile: currentUser, refreshUserProfile } = useApp();
   const [isLoadingUser, setIsLoadingUser] = useState(true);
   const [activeTrip, setActiveTrip] = useState<TripRequest | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     const fetchUserAndTrip = async () => {
+      if (!currentUser) {
+        setIsLoadingUser(false);
+        return;
+      }
       setIsLoadingUser(true);
       try {
-        const user = await getCurrentUser();
-        if (!user) {
-          router.push('/login');
-          return;
+        const result = await getActiveTripForUserAction(currentUser.id);
+        if (result.success) {
+          setActiveTrip(result.trip);
+        } else {
+          throw new Error(result.message || "Could not load trip details.");
         }
-        setCurrentUser(user);
-        
-        const trip = await getActiveTripForUser(user.id);
-        setActiveTrip(trip);
-
       } catch (error: any) {
         console.error("Failed to fetch data for dashboard:", error);
         toast({
@@ -50,7 +51,7 @@ export default function DashboardPage() {
       }
     };
     fetchUserAndTrip();
-  }, [router, toast]);
+  }, [currentUser, router, toast]);
   
   const handleCancelTrip = async () => {
     if (!activeTrip) return;
