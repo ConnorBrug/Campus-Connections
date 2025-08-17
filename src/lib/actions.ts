@@ -306,3 +306,16 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
     }
 }
+
+
+export async function getActiveTripForUserAction(userId: string) {
+  try {
+    const trip = await getActiveTripForUser(userId);
+    // The object needs to be serialized to be passed from a server component to a client component.
+    // We can return the raw trip object, Next.js will handle serialization.
+    return { success: true, trip };
+  } catch (error) {
+    console.error("Error in getActiveTripForUserAction:", error);
+    return { success: false, trip: null, error: "Failed to fetch trip data." };
+  }
+}
