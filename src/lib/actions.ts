@@ -306,14 +306,3 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
     }
 }
-
-
-export async function getActiveTripForUserAction(userId: string) {
-  try {
-    const trip = await getActiveTripForUser(userId);
-    return { success: true, trip: trip || null };
-  } catch (error) {
-    console.error("Error in getActiveTripForUserAction:", error);
-    return { success: false, trip: null, error: "Failed to fetch trip data." };
-  }
-}
