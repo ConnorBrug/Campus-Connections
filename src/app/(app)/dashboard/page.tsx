@@ -4,12 +4,12 @@
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
 import { TripStatusTimeline } from '@/components/dashboard/TripStatusTimeline';
-import { cancelTripAction } from '@/lib/actions';
+import { cancelTripAction, getActiveTripForUserAction } from '@/lib/actions';
 import { useEffect, useState, startTransition } from 'react';
 import type { UserProfile, TripRequest } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal, Loader2, Plane, Trash2, UserCheck, Search, BellRing, Frown } from 'lucide-react';
-import { getCurrentUser, getActiveTripForUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
@@ -34,18 +34,21 @@ export default function DashboardPage() {
         }
         setCurrentUser(user);
         
-        const trip = await getActiveTripForUser(user.id);
-        setActiveTrip(trip);
+        const result = await getActiveTripForUserAction(user.id);
+        if (result.success) {
+          setActiveTrip(result.trip);
+        } else {
+           throw new Error(result.error || "Failed to fetch trip details.");
+        }
 
-      } catch (error) {
-        console.error("Failed to fetch current user for dashboard:", error);
+      } catch (error: any) {
+        console.error("Failed to fetch data for dashboard:", error);
         toast({
-          title: "Error Loading Data",
-          description: "Could not load your dashboard details. Please try again later.",
+          title: "Error Loading Trip",
+          description: error.message || "Could not load your active trip details. Please try again later.",
           variant: "destructive",
         });
-        setCurrentUser(null);
-        router.push('/login');
+        setActiveTrip(null);
       } finally {
         setIsLoadingUser(false);
       }
