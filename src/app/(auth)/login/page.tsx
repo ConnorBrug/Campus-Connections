@@ -12,14 +12,12 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { CarFront, LogIn, AlertTriangle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
@@ -35,7 +33,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setPageError(null);
     try {
-      const userProfile = await login(email, password, rememberMe);
+      const userProfile = await login(email, password);
       toast({ title: "Login Successful!", description: `Welcome back, ${userProfile?.name || 'friend'}!` });
       router.push("/main"); 
     } catch (error: any) {
@@ -104,17 +102,11 @@ export default function LoginPage() {
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
+                     <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                        Forgot password?
+                    </Link>
                 </div>
               <Input id="password" name="password" type="password" placeholder="Password" required value={password} onChange={handleInputChange(setPassword)} autoComplete="current-password" disabled={isSubmitting} />
-            </div>
-             <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                    <Checkbox id="remember-me" checked={rememberMe} onCheckedChange={(checked) => setRememberMe(checked as boolean)} />
-                    <Label htmlFor="remember-me" className="text-sm font-normal">Remember Me</Label>
-                </div>
-                <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
-                    Forgot password?
-                </Link>
             </div>
           </form>
         </CardContent>

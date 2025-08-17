@@ -87,10 +87,10 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
   }
 }
 
-export async function login(email: string, passwordInput: string, rememberMe: boolean): Promise<UserProfile> {
+export async function login(email: string, passwordInput: string): Promise<UserProfile> {
   'use client';
-  const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
-  await setPersistence(auth, persistence);
+  // Default to local persistence to keep the user signed in across browser sessions.
+  await setPersistence(auth, browserLocalPersistence);
   const userCredential = await signInWithEmailAndPassword(auth, email, passwordInput);
   const user = userCredential.user;
   const userProfile = await getUserProfile(user.uid);
@@ -330,7 +330,7 @@ export function findBestMatch(
       return { bestMatch: preferredMatches[0], reasoning };
   }
   
-  eligibleMatches.sort((a, b) => Math.abs(differenceInMinutes(parseISO(currentUserTrip.flightDateTime), parseISO(a.flightDateTime))) - Math.abs(differenceInMinutes(parseISO(currentUserTrip.flightDateTime), parseISO(b.flightDateTime))));
+  eligibleMatches.sort((a, b) => Math.abs(differenceInMinutes(parseISO(currentUserTrip.flightDateTime), parseISO(b.flightDateTime))) - Math.abs(differenceInMinutes(parseISO(currentUserTrip.flightDateTime), parseISO(a.flightDateTime))));
   reasoning.set(eligibleMatches[0].id, 'Selected as Best Match (fallback, gender preference not met).');
   return { bestMatch: eligibleMatches[0], reasoning };
 }
