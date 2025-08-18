@@ -235,26 +235,41 @@ export async function getTripById(tripId: string): Promise<TripRequest | null> {
 
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
     const tripsRef = collection(db, 'tripRequests');
-    const q = query(tripsRef, 
+    
+    // Query for 'pending' trips first
+    const pendingQuery = query(tripsRef, 
         where("userId", "==", userId), 
-        where("status", "in", ["pending", "matched"]),
+        where("status", "==", "pending"),
         limit(1)
     );
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) {
-      // Check for completed trips separately if no active trip is found.
-      const completedQ = query(tripsRef,
+    const pendingSnapshot = await getDocs(pendingQuery);
+    if (!pendingSnapshot.empty) {
+        return pendingSnapshot.docs[0].data() as TripRequest;
+    }
+
+    // If no 'pending', query for 'matched' trips
+    const matchedQuery = query(tripsRef, 
+        where("userId", "==", userId), 
+        where("status", "==", "matched"),
+        limit(1)
+    );
+    const matchedSnapshot = await getDocs(matchedQuery);
+    if (!matchedSnapshot.empty) {
+        return matchedSnapshot.docs[0].data() as TripRequest;
+    }
+
+    // If no active trip, check for the most recent completed trip to show history
+    const completedQ = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "completed"),
         orderBy("flightDateTime", "desc"),
         limit(1));
-      const completedSnapshot = await getDocs(completedQ);
-      if (completedSnapshot.empty) {
-        return null;
-      }
-      return completedSnapshot.docs[0].data() as TripRequest;
+    const completedSnapshot = await getDocs(completedQ);
+    if (!completedSnapshot.empty) {
+        return completedSnapshot.docs[0].data() as TripRequest;
     }
-    return querySnapshot.docs[0].data() as TripRequest;
+
+    return null;
 }
 
 export async function getPendingTripsForMatching(currentTripId: string, university: string): Promise<TripRequest[]> {
