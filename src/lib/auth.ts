@@ -237,35 +237,35 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     const tripsRef = collection(db, 'tripRequests');
     
     // Query for 'pending' trips first. This is a simple query that does not require a composite index.
-    const q = query(tripsRef, 
+    const qPending = query(tripsRef, 
         where("userId", "==", userId), 
         where("status", "==", "pending"),
         limit(1)
     );
-    const querySnapshot = await getDocs(q);
+    const pendingSnapshot = await getDocs(qPending);
     
-    if (!querySnapshot.empty) {
-        return querySnapshot.docs[0].data() as TripRequest;
+    if (!pendingSnapshot.empty) {
+        return pendingSnapshot.docs[0].data() as TripRequest;
     }
 
     // If no 'pending', check for 'matched' trips. This is also a simple query.
-    const matchedQ = query(tripsRef,
+    const qMatched = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "matched"),
         limit(1)
     );
-    const matchedSnapshot = await getDocs(matchedQ);
+    const matchedSnapshot = await getDocs(qMatched);
     if(!matchedSnapshot.empty) {
         return matchedSnapshot.docs[0].data() as TripRequest;
     }
     
-    // Fallback to check for the most recent completed trip. Also a simple query.
-    const completedQ = query(tripsRef,
+    // Fallback to check for the most recent completed trip if no active trips are found.
+    const qCompleted = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "completed"),
         orderBy("flightDateTime", "desc"),
         limit(1));
-    const completedSnapshot = await getDocs(completedQ);
+    const completedSnapshot = await getDocs(qCompleted);
     if (!completedSnapshot.empty) {
         return completedSnapshot.docs[0].data() as TripRequest;
     }
