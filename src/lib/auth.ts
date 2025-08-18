@@ -237,25 +237,24 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     const tripsRef = collection(db, 'tripRequests');
     const q = query(tripsRef, 
         where("userId", "==", userId), 
-        where("status", "in", ["pending", "matched", "completed"]),
+        where("status", "in", ["pending", "matched"]),
         limit(1)
     );
     const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
+      // Check for completed trips separately if no active trip is found.
+      const completedQ = query(tripsRef,
+        where("userId", "==", userId),
+        where("status", "==", "completed"),
+        orderBy("flightDateTime", "desc"),
+        limit(1));
+      const completedSnapshot = await getDocs(completedQ);
+      if (completedSnapshot.empty) {
         return null;
+      }
+      return completedSnapshot.docs[0].data() as TripRequest;
     }
-    const trip = querySnapshot.docs[0].data() as TripRequest;
-    
-    // This part runs on the server and causes permission issues without Admin SDK.
-    // It is safer to disable it. The cron job is the designated place for this logic.
-    /*
-    if (trip.status === 'completed' && isPast(addHours(parseISO(trip.flightDateTime), 48))) {
-        await deleteDoc(doc(db, 'tripRequests', trip.id));
-        return null;
-    }
-    */
-    
-    return trip;
+    return querySnapshot.docs[0].data() as TripRequest;
 }
 
 export async function getPendingTripsForMatching(currentTripId: string, university: string): Promise<TripRequest[]> {
