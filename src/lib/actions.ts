@@ -7,6 +7,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getUserProfile, saveTripRequest, updateTripStatus, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
 import { isValid, parseISO, format } from 'date-fns';
+import { cookies } from 'next/headers';
+import { adminDb } from './firebase-admin';
+import { admin } from './firebase-admin';
 
 const TripDetailsSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
@@ -305,5 +308,47 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
     } catch (error: any) {
         console.error("Delete account error:", error);
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
+    }
+}
+
+// --- NEW SERVER ACTION ---
+export async function getActiveTripForUserAction(): Promise<{ success: boolean; trip?: TripRequest | null; message?: string }> {
+    try {
+        const cookieStore = cookies();
+        const sessionCookie = cookieStore.get('__session')?.value;
+
+        if (!sessionCookie) {
+            // This is not an error, the user is simply not logged in.
+            return { success: true, trip: null };
+        }
+
+        const decodedToken = await admin.auth().verifySessionCookie(sessionCookie, true);
+        const userId = decodedToken.uid;
+
+        if (!userId) {
+            return { success: false, message: 'Could not authenticate user.' };
+        }
+        
+        const tripsRef = adminDb.collection('tripRequests');
+        const q = tripsRef
+            .where("userId", "==", userId)
+            .where("status", "in", ["pending", "matched", "completed"])
+            .limit(1);
+
+        const querySnapshot = await q.get();
+
+        if (querySnapshot.empty) {
+            return { success: true, trip: null };
+        }
+
+        const trip = querySnapshot.docs[0].data() as TripRequest;
+        return { success: true, trip: JSON.parse(JSON.stringify(trip)) };
+
+    } catch (error: any) {
+        console.error("Server Action Error (getActiveTripForUserAction):", error);
+        if (error.code === 'auth/session-cookie-expired' || error.code === 'auth/invalid-session-cookie') {
+            return { success: false, message: 'Your session has expired. Please log in again.' };
+        }
+        return { success: false, message: 'An error occurred while fetching your trip details.' };
     }
 }
