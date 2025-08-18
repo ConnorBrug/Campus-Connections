@@ -236,7 +236,6 @@ export async function getTripById(tripId: string): Promise<TripRequest | null> {
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
     const tripsRef = collection(db, 'tripRequests');
     
-    // Query for 'pending' trips first. This is a simple query that does not require a composite index.
     const qPending = query(tripsRef, 
         where("userId", "==", userId), 
         where("status", "==", "pending"),
@@ -248,7 +247,6 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
         return pendingSnapshot.docs[0].data() as TripRequest;
     }
 
-    // If no 'pending', check for 'matched' trips. This is also a simple query.
     const qMatched = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "matched"),
@@ -259,7 +257,6 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
         return matchedSnapshot.docs[0].data() as TripRequest;
     }
     
-    // Fallback to check for the most recent completed trip if no active trips are found.
     const qCompleted = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "completed"),
