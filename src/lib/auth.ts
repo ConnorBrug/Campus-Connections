@@ -235,38 +235,30 @@ export async function getTripById(tripId: string): Promise<TripRequest | null> {
 
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
     const tripsRef = collection(db, 'tripRequests');
-    
-    const qPending = query(tripsRef, 
+    const q = query(
+        tripsRef, 
         where("userId", "==", userId), 
-        where("status", "==", "pending"),
+        where("status", "in", ["pending", "matched"]),
         limit(1)
     );
-    const pendingSnapshot = await getDocs(qPending);
     
-    if (!pendingSnapshot.empty) {
-        return pendingSnapshot.docs[0].data() as TripRequest;
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].data() as TripRequest;
     }
 
-    const qMatched = query(tripsRef,
-        where("userId", "==", userId),
-        where("status", "==", "matched"),
-        limit(1)
-    );
-    const matchedSnapshot = await getDocs(qMatched);
-    if(!matchedSnapshot.empty) {
-        return matchedSnapshot.docs[0].data() as TripRequest;
-    }
-    
+    // If no pending or matched trip, check for the most recent completed one.
     const qCompleted = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "completed"),
         orderBy("flightDateTime", "desc"),
-        limit(1));
+        limit(1)
+    );
     const completedSnapshot = await getDocs(qCompleted);
     if (!completedSnapshot.empty) {
         return completedSnapshot.docs[0].data() as TripRequest;
     }
-
 
     return null;
 }
