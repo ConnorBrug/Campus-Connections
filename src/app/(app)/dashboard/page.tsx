@@ -4,7 +4,7 @@
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
 import { TripStatusTimeline } from '@/components/dashboard/TripStatusTimeline';
-import { cancelTripAction } from '@/lib/actions';
+import { cancelTripAction, getActiveTripForUserAction } from '@/lib/actions';
 import { useEffect, useState, startTransition } from 'react';
 import type { UserProfile, TripRequest } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -15,7 +15,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useApp } from '@/app/(app)/layout';
-import { getActiveTripForUser } from '@/lib/auth';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,8 +31,12 @@ export default function DashboardPage() {
       }
       setIsLoadingUser(true);
       try {
-        const trip = await getActiveTripForUser(currentUser.id);
-        setActiveTrip(trip);
+        const result = await getActiveTripForUserAction(currentUser.id);
+        if (result.success) {
+          setActiveTrip(result.trip);
+        } else {
+           throw new Error(result.error || "Failed to load trip details.");
+        }
       } catch (error: any) {
         console.error("Failed to fetch data for dashboard:", error);
         toast({
