@@ -307,16 +307,3 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
     }
 }
-
-export async function getActiveTripForUserAction(userId: string): Promise<{ success: boolean; trip: TripRequest | null; error?: string }> {
-  if (!userId) {
-    return { success: false, trip: null, error: 'User not authenticated.' };
-  }
-  try {
-    const trip = await getActiveTripForUser(userId);
-    return { success: true, trip: trip };
-  } catch (error: any) {
-    console.error(`[Server Action] Failed to get active trip for user ${userId}:`, error);
-    return { success: false, trip: null, error: error.message };
-  }
-}
