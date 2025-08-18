@@ -236,29 +236,30 @@ export async function getTripById(tripId: string): Promise<TripRequest | null> {
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
     const tripsRef = collection(db, 'tripRequests');
     
-    // Query for 'pending' trips first
-    const pendingQuery = query(tripsRef, 
+    // Query for 'pending' trips first. This is a simple query that does not require a composite index.
+    const q = query(tripsRef, 
         where("userId", "==", userId), 
         where("status", "==", "pending"),
         limit(1)
     );
-    const pendingSnapshot = await getDocs(pendingQuery);
-    if (!pendingSnapshot.empty) {
-        return pendingSnapshot.docs[0].data() as TripRequest;
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+        return querySnapshot.docs[0].data() as TripRequest;
     }
 
-    // If no 'pending', query for 'matched' trips
-    const matchedQuery = query(tripsRef, 
-        where("userId", "==", userId), 
+    // If no 'pending', check for 'matched' trips. This is also a simple query.
+    const matchedQ = query(tripsRef,
+        where("userId", "==", userId),
         where("status", "==", "matched"),
         limit(1)
     );
-    const matchedSnapshot = await getDocs(matchedQuery);
-    if (!matchedSnapshot.empty) {
+    const matchedSnapshot = await getDocs(matchedQ);
+    if(!matchedSnapshot.empty) {
         return matchedSnapshot.docs[0].data() as TripRequest;
     }
-
-    // If no active trip, check for the most recent completed trip to show history
+    
+    // Fallback to check for the most recent completed trip. Also a simple query.
     const completedQ = query(tripsRef,
         where("userId", "==", userId),
         where("status", "==", "completed"),
@@ -268,6 +269,7 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     if (!completedSnapshot.empty) {
         return completedSnapshot.docs[0].data() as TripRequest;
     }
+
 
     return null;
 }
