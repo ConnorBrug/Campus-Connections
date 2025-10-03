@@ -1,34 +1,40 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+  
+    // UTILITY FUNCTIONS
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
 
-    // Users can read and update their own profiles
+    // RULES
     match /users/{userId} {
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
+      allow read;
+      allow write: if isOwner(userId);
     }
-
-    // Users can manage their own trip requests.
-    // They can read a matched trip if they are the requester or the matched user.
+    
     match /tripRequests/{tripId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.uid == resource.data.matchedUserId);
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null 
+                    && request.resource.data.userId == request.auth.uid
+                    && !request.resource.data.isBanned;
+      
+      allow update, delete: if resource.data.userId == request.auth.uid
+                                || (resource.data.matchedUserId != null && resource.data.matchedUserId == request.auth.uid);
     }
 
-    // Chat messages can only be read/written by participants in the chat.
     match /chats/{chatId} {
       allow read, write: if request.auth != null && request.auth.uid in resource.data.userIds;
       
       match /messages/{messageId} {
-        allow read, create: if request.auth != null && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow read, create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
       }
     }
     
-    // Flagging data is write-only for users
-    match /flags/{flagId} {
-        allow create: if request.auth != null && request.auth.uid == request.resource.data.flaggerId;
+     match /flags/{flagId} {
+      allow create: if request.auth != null && request.resource.data.flaggerId == request.auth.uid;
     }
   }
 }
