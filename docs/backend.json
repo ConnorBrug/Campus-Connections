@@ -95,7 +95,7 @@
     },
     "Match": {
       "title": "Match",
-      "description": "Represents a confirmed match between two users.",
+      "description": "Represents a confirmed match between two users, with denormalized data for security.",
       "type": "object",
       "properties": {
         "id": {
@@ -119,24 +119,29 @@
           "type": "string",
           "format": "date-time"
         },
+        "status": {
+            "type": "string",
+            "enum": ["active", "completed", "cancelled"],
+            "description": "The current status of the match itself."
+        },
         "participants": {
           "type": "object",
+          "description": "An object where keys are user IDs and values are their denormalized trip details for display.",
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "userId": { "type": "string" },
               "userName": { "type": "string" },
               "userPhotoUrl": { "type": "string", "format": "uri" },
               "university": { "type": "string" },
               "flightCode": { "type": "string" },
-              "flightDateTime": { "type": "string", "format": "date-time" }
+              "flightDateTime": { "type": "string", "format": "date-time" },
+              "bagCount": { "type": "number", "description": "Total number of bags for this user." }
             },
-            "required": ["userName", "university", "flightCode", "flightDateTime"]
-          },
-          "description": "An object where keys are user IDs and values are their denormalized trip details."
+            "required": ["userName", "university", "flightCode", "flightDateTime", "bagCount"]
+          }
         }
       },
-      "required": ["id", "participantIds", "tripRequestIds", "createdAt", "participants"]
+      "required": ["id", "participantIds", "tripRequestIds", "createdAt", "status", "participants"]
     },
     "ChatMessage": {
       "title": "Chat Message",
@@ -195,7 +200,7 @@
       "schema": {
         "$ref": "#/entities/Match"
       },
-      "description": "Stores details of a confirmed match between two users."
+      "description": "Stores details of a confirmed match between two users, with denormalized data."
     },
     "/chats/{chatId}": {
       "schema": {

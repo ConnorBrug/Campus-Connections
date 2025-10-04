@@ -57,6 +57,15 @@ export default function PlannedTripsPage() {
                     setMatchedPartner(matchDoc.participants[partnerId]);
                 }
             }
+        } else if (trip?.status === 'completed' && trip.matchId) {
+             const matchDoc = await getMatchById(trip.matchId);
+             if (matchDoc?.status === 'completed') {
+                setMatch(matchDoc);
+                 const partnerId = matchDoc.participantIds.find(id => id !== user.id);
+                if (partnerId && matchDoc.participants[partnerId]) {
+                    setMatchedPartner(matchDoc.participants[partnerId]);
+                }
+             }
         }
       } catch (error) {
         console.error("Error fetching user data for planned trips:", error);
@@ -145,7 +154,7 @@ export default function PlannedTripsPage() {
       <div className="text-center">
         <CardTitle className="text-2xl font-headline">No Trips Planned</CardTitle>
         <CardDescription className="text-lg mt-2">
-          Hey you, you don't have any trips planned yet, but you can begin finding your next match by clicking the button below.
+          You don't have any trips planned yet. Let's find your next match!
         </CardDescription>
         <Button asChild size="lg" className="mt-6">
           <Link href="/dashboard">
@@ -208,7 +217,7 @@ export default function PlannedTripsPage() {
     if (!isClient) {
       return null;
     }
-    const tripIsInThePast = isPast(parseISO(trip.flightDateTime));
+    const tripIsInThePast = match.status === 'completed' || isPast(parseISO(trip.flightDateTime));
     const partnerId = match.participantIds.find(id => id !== currentUser.id);
 
     return (
@@ -246,7 +255,7 @@ export default function PlannedTripsPage() {
              <div>
                 <h4 className="font-semibold text-lg mb-2">Shared Trip Details</h4>
                 <div className="space-y-1 text-sm text-foreground/80">
-                  <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Your Flight:</strong> {trip.flightCode} at {format(parseISO(trip.flightDateTime), 'p')}</p>
+                  <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Your Flight:</strong> {currentUser?.flightCode} at {format(parseISO(currentUser?.flightDateTime), 'p')}</p>
                   <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Partner's Flight:</strong> {partner.flightCode} at {format(parseISO(partner.flightDateTime), 'p')}</p>
                   <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong> {format(parse(trip.flightDate, "yyyy-MM-dd", new Date()), "PPP")}</p>
                 </div>
@@ -256,7 +265,7 @@ export default function PlannedTripsPage() {
     );
   }
 
-  const tripIsInThePast = activeTrip && isClient ? isPast(parseISO(activeTrip.flightDateTime)) : false;
+  const tripIsInThePast = activeTrip && isClient && match ? (match.status === 'completed' || isPast(parseISO(activeTrip.flightDateTime))) : false;
 
   return (
     <div className="container mx-auto py-8 px-4 md:px-6">
@@ -283,7 +292,7 @@ export default function PlannedTripsPage() {
         )}
       </Card>
       
-       {activeTrip?.status === 'completed' && match && matchedPartner && !activeTrip.userHasBeenFlagged && isClient && (
+       {tripIsInThePast && match && matchedPartner && !activeTrip?.userHasBeenFlagged && isClient && (
           renderFlaggingCard()
        )}
     </div>

@@ -10,6 +10,8 @@ import { isValid, parseISO, format } from 'date-fns';
 import { cookies } from 'next/headers';
 import { adminDb } from './firebase-admin';
 import { admin } from './firebase-admin';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+
 
 const TripDetailsSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
@@ -227,25 +229,35 @@ export async function cancelTripAction(tripId: string): Promise<{ success: boole
     if (!trip) {
         return { success: false, message: "Trip not found." };
     }
-    if (trip.userId !== user.id && trip.matchedUserId !== user.id) {
+    if (trip.userId !== user.id) {
         return { success: false, message: "You are not authorized to cancel this trip." };
     }
 
     try {
+        // If the trip was matched, we need to handle the other user as well.
         if (trip.status === 'matched' && trip.matchId) {
-            const isRequester = trip.userId === user.id;
-            const otherTripId = trip.matchId
-            const otherUserId = isRequester ? trip.matchedUserId : trip.userId;
-            
-            if (otherTripId && otherUserId) {
-                // This requires admin privileges to write to another user's trip.
-                // It will fail on the free plan. We will skip it.
-                // await updateTripStatus(otherTripId, 'pending', undefined, undefined, true);
-                console.log(`Skipping update for other user's trip (${otherTripId}) due to permission constraints.`);
+            const matchRef = doc(adminDb, 'matches', trip.matchId);
+            const matchDoc = await getDoc(matchRef);
+
+            if (matchDoc.exists()) {
+                const matchData = matchDoc.data();
+                const otherUserId = matchData.participantIds.find((id: string) => id !== user.id);
+
+                if (otherUserId) {
+                    const otherTripId = matchData.tripRequestIds.find((id: string) => id !== tripId);
+                    if (otherTripId) {
+                         const otherTripRef = doc(adminDb, 'tripRequests', otherTripId);
+                         // Set other user's trip back to pending and alert them
+                         await updateDoc(otherTripRef, { status: 'pending', matchId: null, cancellationAlert: true });
+                    }
+                }
+                 // Update the match status to cancelled
+                await updateDoc(matchRef, { status: 'cancelled' });
             }
         }
-
-        await updateTripStatus(tripId, 'cancelled');
+        
+        // Delete the current user's trip request
+        await adminDb.collection('tripRequests').doc(tripId).delete();
 
         revalidatePath('/dashboard');
         revalidatePath('/planned-trips');
@@ -310,5 +322,3 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
     }
 }
-
-    

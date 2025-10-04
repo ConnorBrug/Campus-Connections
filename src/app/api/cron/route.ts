@@ -51,13 +51,14 @@ export async function GET(request: Request) {
         if(bestMatch) {
             matchesFound++;
             
-            // A. Create a new Match document
+            // A. Create a new Match document with denormalized data
             const matchRef = doc(collection(adminDb, 'matches'));
             const newMatch: Match = {
                 id: matchRef.id,
                 participantIds: [currentTrip.userId, bestMatch.userId],
                 tripRequestIds: [currentTrip.id, bestMatch.id],
                 createdAt: serverTimestamp(),
+                status: "active",
                 participants: {
                     [currentTrip.userId]: {
                         userName: currentTrip.userName,
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
                         university: currentTrip.university,
                         flightCode: currentTrip.flightCode,
                         flightDateTime: currentTrip.flightDateTime,
+                        bagCount: currentTrip.numberOfCarryons + currentTrip.numberOfCheckedBags,
                     },
                     [bestMatch.userId]: {
                         userName: bestMatch.userName,
@@ -72,6 +74,7 @@ export async function GET(request: Request) {
                         university: bestMatch.university,
                         flightCode: bestMatch.flightCode,
                         flightDateTime: bestMatch.flightDateTime,
+                        bagCount: bestMatch.numberOfCarryons + bestMatch.numberOfCheckedBags,
                     }
                 }
             };
@@ -80,8 +83,8 @@ export async function GET(request: Request) {
             // B. Update both trip documents to link to the new Match document
             const currentTripRef = doc(adminDb, 'tripRequests', currentTrip.id);
             const matchedTripRef = doc(adminDb, 'tripRequests', bestMatch.id);
-            batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id, matchedUserId: bestMatch.userId });
-            batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id, matchedUserId: currentTrip.userId });
+            batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id });
+            batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id });
 
             // C. Remove the matched trip from future consideration in this run
             const index = tripsToMatch.findIndex(t => t.id === bestMatch.id);
