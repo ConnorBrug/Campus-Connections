@@ -93,7 +93,7 @@ export default function MainPage() {
                             <>
                                 <p className="text-muted-foreground mb-4">You have a matched trip! Time to coordinate.</p>
                                 <Button asChild size="lg">
-                                    <Link href={`/chat/${activeTrip.matchedUserId}`}>
+                                    <Link href={`/chat/${activeTrip.matchId}`}>
                                         <MessageSquare className="mr-2 h-5 w-5"/>
                                         Chat with Your Match
                                     </Link>
