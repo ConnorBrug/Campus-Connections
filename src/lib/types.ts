@@ -49,7 +49,7 @@ export interface TripRequest {
   university: string;
   campusArea?: string; // Stored for better matching
   status: 'pending' | 'matched' | 'cancelled' | 'completed';
-  createdAt: string; // ISO string
+  createdAt: any; // ISO string or Firestore ServerTimestamp
   matchId?: string; // ID of the /matches document
   matchedUserId?: string; // DEPRECATED in favor of matchId, but kept for migration
   userPreferences: 'Male' | 'Female' | 'No preference';

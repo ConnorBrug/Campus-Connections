@@ -225,11 +225,12 @@ export async function deleteCurrentUserAccount(): Promise<void> {
 
 // --- Firestore Trip Functions ---
 
-export async function saveTripRequest(tripData: Omit<TripRequest, 'id'>): Promise<TripRequest> {
+export async function saveTripRequest(tripData: Omit<TripRequest, 'id' | 'createdAt'>): Promise<TripRequest> {
     const docRef = doc(collection(db, 'tripRequests'));
     const newTrip: TripRequest = {
         ...tripData,
         id: docRef.id,
+        createdAt: serverTimestamp(),
     };
     await setDoc(docRef, newTrip);
     return newTrip;

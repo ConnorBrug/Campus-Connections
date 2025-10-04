@@ -10,7 +10,7 @@ import { isValid, parseISO, format, isBefore, addHours } from 'date-fns';
 import { cookies } from 'next/headers';
 import { adminDb } from './firebase-admin';
 import { admin } from './firebase-admin';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 
 const TripDetailsSchema = z.object({
@@ -111,7 +111,7 @@ export async function submitTripDetailsAction(
 
 
     try {
-        let userTripRequest: Omit<TripRequest, 'id'> = {
+        let userTripRequest: Omit<TripRequest, 'id' | 'createdAt'> = {
             userId: currentUser.id,
             userName: currentUser.name,
             userPhotoUrl: currentUser.photoUrl,
@@ -125,7 +125,6 @@ export async function submitTripDetailsAction(
             university,
             campusArea,
             status: 'pending',
-            createdAt: new Date().toISOString(),
             userPreferences: preferredMatchGender,
             userGender: currentUser.gender,
             noMatchWarningSent: false,
