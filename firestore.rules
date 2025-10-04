@@ -3,38 +3,66 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // UTILITY FUNCTIONS
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // RULES
+    // Rules for the 'users' collection
     match /users/{userId} {
-      allow read;
-      allow write: if isOwner(userId);
+      // Allow anyone to create their own user profile document during signup
+      allow create: if isSignedIn() && isOwner(userId);
+      
+      // Allow any signed-in user to read any user's profile
+      allow read: if isSignedIn();
+      
+      // Only the owner can update their own profile
+      allow update: if isSignedIn() && isOwner(userId);
+      
+      // Only the owner can delete their own profile
+      allow delete: if isSignedIn() && isOwner(userId);
     }
     
+    // Rules for the 'tripRequests' collection
     match /tripRequests/{tripId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null 
-                    && request.resource.data.userId == request.auth.uid
-                    && !request.resource.data.isBanned;
+      // Any signed-in user can create a trip request for themselves
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       
-      allow update, delete: if resource.data.userId == request.auth.uid
-                                || (resource.data.matchedUserId != null && resource.data.matchedUserId == request.auth.uid);
+      // Any signed-in user can read any trip request (needed for matching)
+      allow read: if isSignedIn();
+      
+      // The owner can update or delete their trip request.
+      // A matched user can also trigger an update (e.g., cancellation).
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
+    // Rules for the 'chats' collection
     match /chats/{chatId} {
-      allow read, write: if request.auth != null && request.auth.uid in resource.data.userIds;
+      // Allow read/write only if the user is part of the chat
+      allow read, write: if isSignedIn() && request.auth.uid in resource.data.userIds;
       
+      // Rules for the 'messages' subcollection
       match /messages/{messageId} {
-        allow read, create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
+        // Allow read if user is part of the parent chat document
+        allow read: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        
+        // Allow create if user is the sender and is part of the parent chat
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid 
+                      && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
       }
     }
     
-     match /flags/{flagId} {
-      allow create: if request.auth != null && request.resource.data.flaggerId == request.auth.uid;
+    // Rules for the 'flags' collection
+    match /flags/{flagId} {
+        // Only a signed in user can create a flag
+        allow create: if isSignedIn();
+        // No one can read/update/delete flags from the client-side
+        allow read, update, delete: if false;
     }
   }
 }

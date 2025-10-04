@@ -1,0 +1,158 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Represents a user's profile information.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Firebase Authentication UID"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "university": {
+          "type": "string"
+        },
+        "campusArea": {
+          "type": "string"
+        },
+        "photoUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "emailVerified": {
+          "type": "boolean"
+        },
+        "gender": {
+          "type": "string",
+          "enum": [
+            "Male",
+            "Female",
+            "Other",
+            "Prefer not to say"
+          ]
+        },
+        "dateOfBirth": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "flaggedUserIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isBanned": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "university",
+        "gender",
+        "dateOfBirth"
+      ]
+    },
+    "TripRequest": {
+      "title": "Trip Request",
+      "description": "A user's request for a shared ride.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "matched",
+            "cancelled",
+            "completed"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "status"
+      ]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message within a chat.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "senderId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "text",
+        "senderId"
+      ]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A chat session between two users.",
+      "type": "object",
+      "properties": {
+        "userIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "auth": {
+    "providers": [
+      "email-password"
+    ]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores public profiles for all users."
+    },
+    "/tripRequests/{tripId}": {
+      "schema": {
+        "$ref": "#/entities/TripRequest"
+      },
+      "description": "Collection of all trip requests from users."
+    },
+    "/chats/{chatId}": {
+      "schema": {
+        "$ref": "#/entities/Chat"
+      },
+      "description": "Contains metadata for chat sessions."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Sub-collection storing messages for a specific chat."
+    }
+  }
+}
