@@ -2,171 +2,158 @@
  * @fileoverview Firestore Security Rules for Ride Sharing App
  *
  * Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and trip requests.
- * Matches are accessible to participating users.
- * Chats and chat messages are restricted to participating users.
+ * This ruleset prioritizes user data protection by enforcing strict ownership for user profiles and ride requests.
+ * Ride matches are secured through a shared access model, allowing only matched users to read match details and associated chats.
+ * Public read access is granted for trip requests.
  *
  * Data Structure:
- * - /users/{userId}: User profiles, accessible only to the user themselves.
- * - /tripRequests/{tripId}: Trip requests, owned by a user.
- * - /matches/{matchId}: Match details shared between two users, with denormalized participant data.
- * - /chats/{chatId}: Chat metadata.
- * - /chats/{chatId}/messages/{messageId}: Chat messages within a specific chat.
+ * - /users/{userId}: Stores public user profile information.
+ * - /tripRequests/{tripId}: Contains ride requests. Each request includes the userId of the requester.
+ * - /matches/{matchId}: Holds data for confirmed ride matches, including participant user IDs and denormalized trip details.
+ * - /chats/{chatId}: Stores metadata for chat sessions.
+ * - /chats/{chatId}/messages/{messageId}: Sub-collection storing chat messages for a specific chat.
  *
  * Key Security Decisions:
- * - Users can only read and write their own profile data.
- * - Users can only create, update, or delete their own trip requests.
- * - Matches are readable and writable by participating users.
- * - Chat messages are readable and writable by participating users.
- * - User listing is disallowed for privacy.
+ * - User profiles are self-owned; users can only read/write their own profiles.
+ * - Listing all users is disallowed to protect user privacy.
+ * - Trip requests can be created by authenticated users with the correct userId.
+ * - Only matched users can read ride match details and chat messages.
+ * - The rules do NOT perform extensive data validation beyond essential authorization checks for prototyping speed.
  *
  * Denormalization for Authorization:
- * - The `/matches/{matchId}` document contains a `participantIds` array to efficiently check user authorization without additional reads.
- * - The `/matches/{matchId}` document contains a `participants` map to store relevant trip details for each user participating in the match.
+ * - The /matches/{matchId} document contains a `participantIds` array. This denormalization allows security rules to quickly verify if a user is part of a match without needing additional `get()` calls.
  *
  * Structural Segregation:
- * - Drafts vs. Published Content: Not applicable in this data model.
+ * - Uses separate collections for public and private data.
  */
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile data.
+     * @description Checks if the requesting user is signed in.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the requesting user owns the document.
+     */
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user is an existing owner of the resource.
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+    }
+
+
+    /**
+     * @description Rules for user profiles. Users can only read and write their own profile. Listing all users is disallowed.
      * @path /users/{userId}
-     * @allow (get, create, update, delete) if the requesting user is the owner of the profile.
-     * @deny (get, create, update, delete) if the requesting user is not the owner of the profile.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create) - Authenticated user creates their own profile.
+     *     request.auth.uid: "user123"
+     *     userId: "user123"
+     * @allow (get) - Authenticated user reads their own profile.
+     *     request.auth.uid: "user123"
+     *     userId: "user123"
+     * @deny (create) - Authenticated user attempts to create a profile with a mismatched ID.
+     *     request.auth.uid: "user123"
+     *     userId: "user456"
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId} {
-      // Helper function to check if the requesting user is the owner
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      // Helper function to check if the requesting user is the owner, with existence check.
-      function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-      }
-
-      // Only allow authenticated users
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
       allow get: if isOwner(userId);
-      allow list: if false; // User listing is not allowed
-
-      // Self-creation: Allow create if the user ID matches the authenticated user's ID.
-      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == userId;
-
-      // On Update: Enforce immutability of the user ID.
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-
-      //Only the user can delete their own profile
+      allow list: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Controls access to trip requests.
+     * @description Rules for ride requests.  Authenticated users can create ride requests, and read their own ride requests.
      * @path /tripRequests/{tripId}
-     * @allow (get, create, update, delete) if the requesting user is the owner of the trip request.
-     * @deny (get, create, update, delete) if the requesting user is not the owner of the trip request.
+     * @allow (create) - Authenticated user creates a ride request for themselves.
+     *     request.auth.uid: "user123"
+     *     request.resource.data.userId: "user123"
+     * @allow (get) - Authenticated user gets their own ride request.
+     *     request.auth.uid: "user123"
+     *     resource.data.userId: "user123"
+     * @deny (create) - Authenticated user attempts to create a ride request for another user.
+     *     request.auth.uid: "user123"
+     *     request.resource.data.userId: "user456"
      * @principle Enforces document ownership for writes.
      */
     match /tripRequests/{tripId} {
-      // Helper function to check if the requesting user is the owner of the trip request
-      function isTripOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-        // Helper function to check if the requesting user is the owner, with existence check.
-        function isExistingTripOwner(userId) {
-          return isTripOwner(userId) && resource != null;
-        }
-
-      // Only allow authenticated users
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-
-      // Validate the trip request's user ID on create.
-      allow create: if isSignedIn() && isTripOwner(request.resource.data.userId);
-      allow update: if isExistingTripOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
-      allow delete: if isExistingTripOwner(resource.data.userId);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn()
+        && request.query.where('userId', '==', request.auth.uid)
+        && request.query.where('status', 'in', ["pending", "matched", "completed"]);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     /**
-     * @description Controls access to match details.
+     * @description Rules for ride matches. Only users present in the `participantIds` array can read or write to match details.
      * @path /matches/{matchId}
-     * @allow (get, list, create, update, delete) if the requesting user is a participant in the match.
-     * @deny (get, list, create, update, delete) if the requesting user is not a participant in the match.
-     * @principle Enforces shared access between matched users.
+     * @allow (get) - Authenticated user who is a participant in the match reads the match details.
+     *     request.auth.uid: "user123"
+     *     resource.data.participantIds: ["user123", "user456"]
+     * @deny (get) - Authenticated user who is not a participant attempts to read the match details.
+     *     request.auth.uid: "user789"
+     *     resource.data.participantIds: ["user123", "user456"]
+     * @principle Restricts access to ride matches to participating users.
      */
     match /matches/{matchId} {
-      // Helper function to check if the requesting user is a participant in the match
-      function isParticipant() {
-        return request.auth.uid in resource.data.participantIds;
-      }
-
-        // Helper function to check if the requesting user is a participant in the match, with existence check
-        function isExistingParticipant() {
-          return isParticipant() && resource != null;
-        }
-
-      // Only allow authenticated users
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      allow get: if isSignedIn() && isParticipant();
-      allow list: if isSignedIn();
-      allow create: if false; // Matches are not created directly by users
-      allow update: if isExistingParticipant();
-      allow delete: if false; // Matches are not deleted directly by users
+      allow get: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+      allow list: if false;
+      allow create: if false;
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+      allow delete: if false;
     }
 
+    /**
+     * @description Rules for chat sessions.  Only users who are part of the chat (defined in `userIds`) can read the chat metadata.
+     * @path /chats/{chatId}
+     * @allow (get) - Authenticated user who is a participant in the chat reads the chat metadata.
+     *     request.auth.uid: "user123"
+     *     resource.data.userIds: ["user123", "user456"]
+     * @deny (get) - Authenticated user who is not a participant attempts to read the chat metadata.
+     *     request.auth.uid: "user789"
+     *     resource.data.userIds: ["user123", "user456"]
+     * @principle Restricts access to chats to participating users.
+     */
+    match /chats/{chatId} {
+      allow get: if isSignedIn() && request.auth.uid in resource.data.userIds;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+
         /**
-         * @description Controls access to chat metadata.
-         * @path /chats/{chatId}
+         * @description Rules for chat messages. Only users who are part of the chat can read messages.
+         * @path /chats/{chatId}/messages/{messageId}
+         *  @allow (get) - Authenticated user who is a participant in the chat can read the chat messages.
+         *     request.auth.uid: "user123"
+         *     resource.data.userIds: ["user123", "user456"]
+         * @deny (get) - Authenticated user who is not a participant in the chat attempts to read the chat messages.
+         *     request.auth.uid: "user789"
+         *     resource.data.userIds: ["user123", "user456"]
+         * @principle Restricts access to chat messages to participating users.
          */
-        match /chats/{chatId} {
-            function isSignedIn() {
-                return request.auth != null;
-            }
-
-            function isChatParticipant() {
-                return request.auth.uid in resource.data.userIds;
-            }
-
-            allow get: if isSignedIn() && isChatParticipant();
-            allow list: if false; // Chats are not publically listable.
-            allow create: if false; // Chat creation should be handled by backend functions.
-            allow update: if false;
-            allow delete: if false;
-
-            /**
-             * @description Controls access to chat messages within a chat.
-             * @path /chats/{chatId}/messages/{messageId}
-             */
-            match /messages/{messageId} {
-                function isSignedIn() {
-                    return request.auth != null;
-                }
-
-                function isChatParticipant() {
-                    return get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
-                }
-
-                allow get: if isSignedIn() && isChatParticipant();
-                allow list: if isSignedIn() && isChatParticipant();
-                allow create: if isSignedIn() && isChatParticipant() && request.resource.data.senderId == request.auth.uid;
-                allow update: if false;
-                allow delete: if false;
-            }
+        match /messages/{messageId} {
+          allow get: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
+          allow list: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
+          allow create: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
+          allow update: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.userIds;
+          allow delete: if false;
         }
+    }
   }
 }
