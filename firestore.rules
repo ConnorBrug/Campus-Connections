@@ -1,100 +1,142 @@
+/**
+ * @file Firestore Security Rules
+ * @description This ruleset enforces a user-ownership model for trip requests and restricts access to matches and chats to authorized participants.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profiles, accessible only to the owning user.
+ * - /tripRequests/{tripId}: Stores trip requests, accessible only to the creating user.
+ * - /matches/{matchId}: Stores match data, accessible to the two matched users.
+ * - /chats/{chatId}: Stores chat metadata, accessible to the chat participants.
+ * - /chats/{chatId}/messages/{messageId}: Stores chat messages, accessible to chat participants.
+ *
+ * Key Security Decisions:
+ * - Users can only create, read, update, and delete their own trip requests.
+ * - Listing trips is restricted to those belonging to the authenticated user.
+ * - Matches are accessible only to the two users involved in the match, verified via the participantIds array.
+ * - Chats and their messages are accessible only to the users who are part of the chat.
+ * - User listing is disallowed.
+ *
+ * Denormalization for Authorization:
+ * - The /matches/{matchId} documents contain a participantIds array which is used to authorize access to the match data.
+ *   This avoids needing to query other collections to determine access.
+ * - The /chats/{chatId} documents contain a userIds array which is used to authorize access to the chat and messages.
+ *   This avoids needing to query other collections to determine access.
+ *
+ * Structural Segregation:
+ * - No explicit structural segregation is used.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profiles.
+     * @description Allows access to user profile documents.
      * @path /users/{userId}
-     * @allow (create) If the user ID in the path matches the authenticated user's ID, allowing self-creation.
-     * @allow (get, list) Anyone can read user profiles.
-     * @allow (update, delete) Only the user who owns the profile can update or delete it.
-     * @deny (create) If the user ID in the path does not match the authenticated user's ID.
-     * @deny (update, delete) If the user does not own the profile.
-     * @principle Enforces document ownership for writes and public read access.
+     * @allow (create) User with ID 'user123' can create their own profile.
+     * @deny (create) User with ID 'user123' cannot create a profile for 'user456'.
+     * @allow (get) User with ID 'user123' can read their own profile.
+     * @deny (get) User with ID 'user123' cannot read the profile of 'user456'.
+     * @allow (update) User with ID 'user123' can update their own profile.
+     * @deny (update) User with ID 'user123' cannot update the profile of 'user456'.
+     * @allow (delete) User with ID 'user123' can delete their own profile.
+     * @deny (delete) User with ID 'user123' cannot delete the profile of 'user456'.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow get, list: if true;
-      allow update, delete: if isSignedIn() && request.auth.uid == userId;
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false;
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
 
     /**
-     * @description Controls access to trip requests.
+     * @description Controls access to trip request documents.
      * @path /tripRequests/{tripId}
-     * @allow (create) Only the authenticated user can create a trip request with their own user ID.
-     * @allow (get) Only the owner of the trip request can read it.
-     * @allow (list) Only the owner can list their own trip requests with specific status filters.
-     * @deny (create) If the authenticated user's ID does not match the userId in the request data.
-     * @deny (get) If the requesting user is not the owner of the trip request.
-     * @deny (list) If the query does not filter by the authenticated user's ID and specific statuses.
-     * @principle Enforces document ownership for writes and restricts read access to the owner.
+     * @allow (create) User with ID 'user123' can create a trip request with userId 'user123'.
+     * @deny (create) User with ID 'user123' cannot create a trip request with userId 'user456'.
+     * @allow (get) User with ID 'user123' can read a trip request with userId 'user123'.
+     * @deny (get) User with ID 'user123' cannot read a trip request with userId 'user456'.
+     * @allow (update) User with ID 'user123' can update a trip request with userId 'user123'.
+     * @deny (update) User with ID 'user123' cannot update a trip request with userId 'user456'.
+     * @allow (delete) User with ID 'user123' can delete a trip request with userId 'user123'.
+     * @deny (delete) User with ID 'user123' cannot delete a trip request with userId 'user456'.
+     * @principle Enforces document ownership for writes and enforces userId consistency.
      */
     match /tripRequests/{tripId} {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow list: if isSignedIn() && request.query.where("userId", "==", request.auth.uid).where("status", "in", ["pending", "matched", "completed"]).size() == 2;
-      allow update, delete: if false; // Not Implemented
+      allow list: if isSignedIn() && request.query.where("userId", "==", request.auth.uid).size() > 0;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     /**
-     * @description Controls access to matches.
+     * @description Manages access to match documents, allowing access to the two participants in the match.
      * @path /matches/{matchId}
-     * @allow (create) Not implemented in this phase.
-     * @allow (get) If the authenticated user is one of the participants.
-     * @allow (list) Not implemented in this phase.
-     * @allow (update, delete) Not implemented in this phase.
-     * @deny (create) Always deny.
-     * @deny (get) If the authenticated user is not a participant.
-     * @principle Enforces shared access between participants.
+     * @allow (create) N/A - Creation should be handled by backend logic
+     * @deny (create) Always denied.
+     * @allow (get) User with ID 'user123' can read match document if 'user123' is in participantIds.
+     * @deny (get) User with ID 'user123' cannot read match document if 'user123' is not in participantIds.
+     * @allow (update) User with ID 'user123' can update match document if 'user123' is in participantIds.
+     * @deny (update) User with ID 'user123' cannot update match document if 'user123' is not in participantIds.
+     * @allow (delete) N/A - Deletion should be handled by backend logic or specific admin roles.
+     * @deny (delete) Always denied.
+     * @principle Restricts access to the two users involved in the match, verified via the participantIds array.
      */
     match /matches/{matchId} {
-      allow create: if false;
-      allow get: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
-      allow list: if false;
-      allow update, delete: if false; // Not Implemented
+        allow create: if false;
+        allow get: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
+        allow list: if false;
+        allow update: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
+        allow delete: if false;
     }
 
     /**
-     * @description Controls access to chats.
+     * @description Controls access to chat documents, ensuring only chat participants can access the chat metadata.
      * @path /chats/{chatId}
-     * @allow (create) Not implemented in this phase.
-     * @allow (get) If the authenticated user is one of the users in the chat.
-     * @allow (list) Not implemented in this phase.
-     * @allow (update, delete) Not implemented in this phase.
-     * @deny (create) Always deny.
-     * @deny (get) If the authenticated user is not a participant.
-     * @principle Enforces shared access between chat participants.
+     * @allow (create) N/A - Creation should be handled by backend logic.
+     * @deny (create) Always denied.
+     * @allow (get) User with ID 'user123' can read chat document if 'user123' is in userIds.
+     * @deny (get) User with ID 'user123' cannot read chat document if 'user123' is not in userIds.
+     * @allow (update) User with ID 'user123' can update chat document if 'user123' is in userIds.
+     * @deny (update) User with ID 'user123' cannot update chat document if 'user123' is not in userIds.
+     * @allow (delete) N/A - Deletion should be handled by backend logic or specific admin roles.
+     * @deny (delete) Always denied.
+     * @principle Restricts access to chat metadata to only those users participating in the chat, based on the userIds array.
      */
     match /chats/{chatId} {
-      allow create: if false;
-      allow get: if isSignedIn() && resource.data.userIds.hasAny([request.auth.uid]);
-      allow list: if false;
-      allow update, delete: if false; // Not Implemented
+        allow create: if false;
+        allow get: if isSignedIn() && resource.data.userIds.hasAny([request.auth.uid]);
+        allow list: if false;
+        allow update: if isSignedIn() && resource.data.userIds.hasAny([request.auth.uid]);
+        allow delete: if false;
+    }
 
-      /**
-       * @description Controls access to chat messages.
-       * @path /chats/{chatId}/messages/{messageId}
-       * @allow (create) If the authenticated user is a participant in the chat.
-       * @allow (get, list) If the authenticated user is a participant in the chat.
-       * @allow (update, delete) Not implemented in this phase.
-       * @deny (create) If the authenticated user is not a participant.
-       * @deny (get, list) If the authenticated user is not a participant.
-       * @principle Enforces shared access to chat messages.
-       */
-      match /messages/{messageId} {
+    /**
+     * @description Manages access to chat messages, ensuring only chat participants can access the messages.
+     * @path /chats/{chatId}/messages/{messageId}
+     * @allow (create) User with ID 'user123' can create a message if 'user123' is in userIds of the parent chat document.
+     * @deny (create) User with ID 'user123' cannot create a message if 'user123' is not in userIds of the parent chat document.
+     * @allow (get) User with ID 'user123' can read a message if 'user123' is in userIds of the parent chat document.
+     * @deny (get) User with ID 'user123' cannot read a message if 'user123' is not in userIds of the parent chat document.
+     * @allow (update) User with ID 'user123' can update a message if 'user123' is in userIds of the parent chat document.
+     * @deny (update) User with ID 'user123' cannot update a message if 'user123' is not in userIds of the parent chat document.
+     * @allow (delete) User with ID 'user123' can delete a message if 'user123' is in userIds of the parent chat document.
+     * @deny (delete) User with ID 'user123' cannot delete a message if 'user123' is not in userIds of the parent chat document.
+     * @principle Restricts access to chat messages to only those users participating in the chat, based on the userIds array in the parent chat document.
+     */
+    match /chats/{chatId}/messages/{messageId} {
         allow create: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
-        allow get, list: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
-        allow update, delete: if false; // Not Implemented
-      }
+        allow get: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow list: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow update: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow delete: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
     }
   }
-}
 
-/**
- * @description Checks if the user is signed in.
- * @returns {boolean} True if the user is signed in, false otherwise.
- * @principle Ensures that only authenticated users can perform certain actions.
- */
-function isSignedIn() {
-  return request.auth != null;
+  // Helper functions
+  function isSignedIn() {
+    return request.auth != null;
+  }
 }
