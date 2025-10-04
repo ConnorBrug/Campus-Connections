@@ -9,9 +9,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Send, MessageSquare, Loader2, Info } from 'lucide-react';
-import { getCurrentUser, getUserProfile, sendMessage, getChatId, setTypingStatus, listenToTypingStatus } from '@/lib/auth';
+import { getCurrentUser, getUserProfile, sendMessage, getChatId, setTypingStatus, listenToTypingStatus, getMatchById } from '@/lib/auth';
 import { useParams, useRouter } from 'next/navigation';
-import type { UserProfile, ChatMessage } from '@/lib/types';
+import type { UserProfile, ChatMessage, Match } from '@/lib/types';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
@@ -37,7 +37,8 @@ export default function ChatPage() {
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
-
+  const [match, setMatch] = useState<Match | null>(null);
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +49,7 @@ export default function ChatPage() {
   // Typing indicator state
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,11 +70,22 @@ export default function ChatPage() {
         setCurrentUser(user);
 
         if (matchId) {
-          const matchedProfile = await getUserProfile(matchId);
-          setMatchedUser(matchedProfile);
-          
-          const currentChatId = getChatId(user.id, matchId);
-          setChatId(currentChatId);
+          const currentMatch = await getMatchById(matchId);
+          if(!currentMatch || !currentMatch.participantIds.includes(user.id)) {
+             console.error("User not part of this match.");
+             router.push('/dashboard');
+             return;
+          }
+          setMatch(currentMatch);
+
+          const otherParticipantId = currentMatch.participantIds.find(id => id !== user.id);
+          if (otherParticipantId) {
+              setPartnerId(otherParticipantId);
+              const matchedProfile = await getUserProfile(otherParticipantId);
+              setMatchedUser(matchedProfile);
+              const currentChatId = getChatId(user.id, otherParticipantId);
+              setChatId(currentChatId);
+          }
         }
       } catch (error) {
         console.error("Error loading chat page data:", error);
@@ -112,12 +125,12 @@ export default function ChatPage() {
 
   // Typing indicator listeners
   useEffect(() => {
-    if (!chatId || !currentUser) return;
+    if (!chatId || !currentUser || !partnerId) return;
     const unsubscribe = listenToTypingStatus(chatId, (typingUserId) => {
-        setIsOtherUserTyping(typingUserId === matchId);
+        setIsOtherUserTyping(typingUserId === partnerId);
     });
     return () => unsubscribe();
-  }, [chatId, currentUser, matchId]);
+  }, [chatId, currentUser, partnerId]);
   
   const updateTypingStatus = useCallback(() => {
     if (!chatId || !currentUser) return;

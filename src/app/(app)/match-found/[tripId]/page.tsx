@@ -99,8 +99,6 @@ export default function MatchFoundPage() {
     );
   }
 
-  const partnerId = matchDetails.participantIds.find(id => id !== currentUser.id);
-
   return (
     <div className="container mx-auto py-10 px-4 md:px-6 flex flex-col items-center">
       <Card className="w-full max-w-lg shadow-xl rounded-lg">
@@ -134,7 +132,7 @@ export default function MatchFoundPage() {
                     Next step: Coordinate your ride! Send a message to confirm your plans, pickup location, and share costs.
                 </p>
                 <Button asChild size="lg">
-                    <Link href={`/chat/${partnerId}`}>
+                    <Link href={`/chat/${matchDetails.id}`}>
                         <MessageSquare className="mr-2 h-5 w-5"/>
                         Chat with {matchedPartnerDetails.userName.split(' ')[0]}
                     </Link>

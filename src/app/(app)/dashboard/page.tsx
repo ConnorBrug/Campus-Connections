@@ -127,7 +127,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="lg:col-span-2">
-            {activeTrip && (
+            {activeTrip && activeTrip.matchId && (
                  <Card className="shadow-lg">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-2xl">
@@ -143,9 +143,9 @@ export default function DashboardPage() {
                     <CardContent className="space-y-6">
                         <TripStatusTimeline status={activeTrip.status} />
 
-                         {activeTrip.status === 'matched' && (
+                         {activeTrip.status === 'matched' && activeTrip.matchId && (
                             <Button asChild className="w-full">
-                                <Link href={`/chat/${activeTrip.matchedUserId}`}>
+                                <Link href={`/chat/${activeTrip.matchId}`}>
                                     <UserCheck className="mr-2 h-4 w-4" /> Go to Chat
                                 </Link>
                             </Button>
