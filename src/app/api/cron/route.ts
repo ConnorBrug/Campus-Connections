@@ -4,7 +4,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { differenceInHours, isPast, parseISO, addHours } from 'date-fns';
 import type { TripRequest, Match } from '@/lib/types';
-import { findBestMatch } from '@/lib/auth';
+import { findBestMatch, initiateChat } from '@/lib/auth';
 import { sendNotificationEmail } from '@/lib/email';
 
 
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
     const allPendingTrips: TripRequest[] = [];
     pendingTripsSnapshot.forEach(doc => {
       const trip = doc.data() as TripRequest;
+      // Filter out trips that are already in the past
       if (!isPast(parseISO(trip.flightDateTime))) {
         allPendingTrips.push(trip);
       }
@@ -79,14 +80,17 @@ export async function GET(request: Request) {
             // B. Update both trip documents to link to the new Match document
             const currentTripRef = doc(adminDb, 'tripRequests', currentTrip.id);
             const matchedTripRef = doc(adminDb, 'tripRequests', bestMatch.id);
-            batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id });
-            batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id });
+            batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id, matchedUserId: bestMatch.userId });
+            batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id, matchedUserId: currentTrip.userId });
 
             // C. Remove the matched trip from future consideration in this run
             const index = tripsToMatch.findIndex(t => t.id === bestMatch.id);
             if(index > -1) tripsToMatch.splice(index, 1);
 
-            // D. Send notifications
+            // D. Initiate the chat
+            await initiateChat(matchRef.id, newMatch.participants);
+
+            // E. Send notifications
             await sendNotificationEmail({
               to: currentTrip.userName, // In a real app, this would be the user's email
               subject: "You have a new match!",
@@ -111,6 +115,10 @@ export async function GET(request: Request) {
     const warningBatch = writeBatch(adminDb);
     const now = new Date();
     allPendingTrips.forEach(async (trip) => {
+        // Only process trips that are still pending after the matching loop
+        const isStillPending = !tripsToMatch.some(t => t.id === trip.id);
+        if (!isStillPending) return;
+
         const flightTime = parseISO(trip.flightDateTime);
         // If flight is within 5 hours and no warning has been sent
         if(differenceInHours(flightTime, now) <= 5 && !trip.noMatchWarningSent) {

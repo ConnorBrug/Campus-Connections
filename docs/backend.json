@@ -120,8 +120,8 @@
           "format": "date-time"
         },
         "participants": {
-          "type": "array",
-          "items": {
+          "type": "object",
+          "additionalProperties": {
             "type": "object",
             "properties": {
               "userId": { "type": "string" },
@@ -130,8 +130,10 @@
               "university": { "type": "string" },
               "flightCode": { "type": "string" },
               "flightDateTime": { "type": "string", "format": "date-time" }
-            }
-          }
+            },
+            "required": ["userName", "university", "flightCode", "flightDateTime"]
+          },
+          "description": "An object where keys are user IDs and values are their denormalized trip details."
         }
       },
       "required": ["id", "participantIds", "tripRequestIds", "createdAt", "participants"]

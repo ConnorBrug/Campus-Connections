@@ -51,7 +51,7 @@ export interface TripRequest {
   status: 'pending' | 'matched' | 'cancelled' | 'completed';
   createdAt: string; // ISO string
   matchId?: string; // ID of the /matches document
-  matchedUserId?: string; // Keeping for now for backwards compatibility, but match doc is source of truth
+  matchedUserId?: string; // Kept for simplicity, though matchId is primary for linking
   userPreferences: 'Male' | 'Female' | 'No preference';
   userGender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
   noMatchWarningSent: boolean; // Has the 5-hour warning been sent?

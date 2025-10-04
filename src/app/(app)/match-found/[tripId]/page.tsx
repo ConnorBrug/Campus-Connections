@@ -39,7 +39,7 @@ export default function MatchFoundPage() {
             if (match) {
               setMatchDetails(match);
               const partnerId = match.participantIds.find(id => id !== user.id);
-              if (partnerId) {
+              if (partnerId && match.participants[partnerId]) {
                  const partnerDetails = match.participants[partnerId];
                  // We can construct a partial UserProfile from the match data
                  setMatchedPartner({

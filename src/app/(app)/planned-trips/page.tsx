@@ -53,7 +53,7 @@ export default function PlannedTripsPage() {
             setMatch(matchDoc);
             if (matchDoc) {
                 const partnerId = matchDoc.participantIds.find(id => id !== user.id);
-                if (partnerId) {
+                if (partnerId && matchDoc.participants[partnerId]) {
                     setMatchedPartner(matchDoc.participants[partnerId]);
                 }
             }
