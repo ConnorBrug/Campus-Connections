@@ -50,14 +50,32 @@ export interface TripRequest {
   campusArea?: string; // Stored for better matching
   status: 'pending' | 'matched' | 'cancelled' | 'completed';
   createdAt: string; // ISO string
-  matchId?: string; // ID of the matched TripRequest document
-  matchedUserId?: string; // ID of the matched user
+  matchId?: string; // ID of the /matches document
+  matchedUserId?: string; // Keeping for now for backwards compatibility, but match doc is source of truth
   userPreferences: 'Male' | 'Female' | 'No preference';
   userGender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
   noMatchWarningSent: boolean; // Has the 5-hour warning been sent?
   cancellationAlert: boolean; // Should we show the user a cancellation alert?
   userHasBeenFlagged?: boolean; // Has the user of this trip already been flagged?
 }
+
+// Represents a confirmed match between two users
+export interface Match {
+    id: string;
+    participantIds: [string, string];
+    tripRequestIds: [string, string];
+    createdAt: any; // Firestore ServerTimestamp
+    participants: {
+        [userId: string]: {
+            userName: string;
+            userPhotoUrl?: string;
+            university: string;
+            flightCode: string;
+            flightDateTime: string;
+        }
+    };
+}
+
 
 export type TripDetailsFormState = {
   message?: string;

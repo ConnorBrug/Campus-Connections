@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { getCurrentUser, getActiveTripForUser, getUserProfile, flagUser } from '@/lib/auth';
-import type { UserProfile, TripRequest } from '@/lib/types';
+import { getCurrentUser, getActiveTripForUser, getMatchById, flagUser } from '@/lib/auth';
+import type { UserProfile, TripRequest, Match } from '@/lib/types';
 import Link from 'next/link';
 import { format, parse, parseISO, isPast } from 'date-fns';
-import { Plane, CalendarDays, Clock, Backpack, Luggage, Building, Info, Trash2, Frown, Loader2, MessageSquare, UserCheck, Star, ShieldAlert } from 'lucide-react';
+import { Plane, CalendarDays, Clock, Backpack, Luggage, Building, Info, Trash2, Frown, Loader2, MessageSquare, UserCheck, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { cancelTripAction } from '@/lib/actions';
@@ -19,13 +19,12 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-
-
 export default function PlannedTripsPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeTrip, setActiveTrip] = useState<TripRequest | null>(null);
-  const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
+  const [match, setMatch] = useState<Match | null>(null);
+  const [matchedPartner, setMatchedPartner] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [flagReason, setFlagReason] = useState("");
@@ -49,9 +48,15 @@ export default function PlannedTripsPage() {
         const trip = await getActiveTripForUser(user.id);
         setActiveTrip(trip);
 
-        if (trip?.status === 'matched' && trip.matchedUserId) {
-            const matchedProfile = await getUserProfile(trip.matchedUserId);
-            setMatchedUser(matchedProfile);
+        if (trip?.status === 'matched' && trip.matchId) {
+            const matchDoc = await getMatchById(trip.matchId);
+            setMatch(matchDoc);
+            if (matchDoc) {
+                const partnerId = matchDoc.participantIds.find(id => id !== user.id);
+                if (partnerId) {
+                    setMatchedPartner(matchDoc.participants[partnerId]);
+                }
+            }
         }
       } catch (error) {
         console.error("Error fetching user data for planned trips:", error);
@@ -76,7 +81,8 @@ export default function PlannedTripsPage() {
                 description: "Your trip details have been removed.",
             });
             setActiveTrip(null);
-            setMatchedUser(null);
+            setMatch(null);
+            setMatchedPartner(null);
         } else {
             toast({
                 title: "Error",
@@ -89,15 +95,17 @@ export default function PlannedTripsPage() {
   };
   
   const handleFlagUser = async () => {
-      if (!currentUser || !activeTrip || !matchedUser || !flagReason) return;
+      if (!currentUser || !match || !matchedPartner || !flagReason) return;
+      const partnerId = match.participantIds.find(id => id !== currentUser.id);
+      if(!partnerId) return;
+
       setIsFlagging(true);
       try {
-          await flagUser(currentUser.id, matchedUser.id, flagReason);
+          await flagUser(currentUser.id, partnerId, flagReason);
           toast({
               title: "User Flagged",
               description: "Thank you for your feedback. Our team will review this report.",
           });
-          // Potentially update UI to hide flagging option
           setActiveTrip(prev => prev ? {...prev, userHasBeenFlagged: true} : null);
       } catch (error) {
           toast({
@@ -196,11 +204,12 @@ export default function PlannedTripsPage() {
     </Card>
   );
 
-  const renderMatchedTrip = (trip: TripRequest, match: UserProfile) => {
+  const renderMatchedTrip = (trip: TripRequest, match: Match, partner: any) => {
     if (!isClient) {
       return null;
     }
     const tripIsInThePast = isPast(parseISO(trip.flightDateTime));
+    const partnerId = match.participantIds.find(id => id !== currentUser.id);
 
     return (
       <>
@@ -209,23 +218,23 @@ export default function PlannedTripsPage() {
           {tripIsInThePast ? "Trip Completed" : "You're Matched!"}
         </CardTitle>
         <CardDescription className="text-center text-lg">
-          {tripIsInThePast ? `This trip with ${match.name} is now complete.` : `You've been matched with ${match.name} for your trip.`}
+          {tripIsInThePast ? `This trip with ${partner.userName} is now complete.` : `You've been matched with ${partner.userName} for your trip.`}
         </CardDescription>
         
         <div className="p-4 border rounded-md bg-muted/30 shadow-inner space-y-4">
             <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
                  <Avatar className="h-20 w-20 border-2 border-primary">
-                    <AvatarImage src={match.photoUrl || `https://placehold.co/100x100.png?text=${getInitials(match.name)}`} alt={match.name} data-ai-hint="person avatar"/>
-                    <AvatarFallback>{getInitials(match.name)}</AvatarFallback>
+                    <AvatarImage src={partner.userPhotoUrl || ''} alt={partner.userName} data-ai-hint="person avatar"/>
+                    <AvatarFallback>{getInitials(partner.userName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                    <h3 className="text-xl font-bold">{match.name}</h3>
-                    <p className="text-sm text-muted-foreground">{match.university}</p>
-                    { !tripIsInThePast ? (
+                    <h3 className="text-xl font-bold">{partner.userName}</h3>
+                    <p className="text-sm text-muted-foreground">{partner.university}</p>
+                    { !tripIsInThePast && partnerId ? (
                       <Button size="sm" asChild className="mt-2">
-                          <Link href={`/chat/${match.id}`}>
+                          <Link href={`/chat/${partnerId}`}>
                               <MessageSquare className="mr-2 h-4 w-4"/>
-                              Chat with {match.name.split(' ')[0]}
+                              Chat with {partner.userName.split(' ')[0]}
                           </Link>
                       </Button>
                     ) : (
@@ -237,9 +246,9 @@ export default function PlannedTripsPage() {
              <div>
                 <h4 className="font-semibold text-lg mb-2">Shared Trip Details</h4>
                 <div className="space-y-1 text-sm text-foreground/80">
-                  <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Flight Code:</strong> {trip.flightCode}</p>
+                  <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Your Flight:</strong> {trip.flightCode} at {format(parseISO(trip.flightDateTime), 'p')}</p>
+                  <p className="flex items-center gap-2"><Plane className="h-4 w-4 text-primary" /> <strong>Partner's Flight:</strong> {partner.flightCode} at {format(parseISO(partner.flightDateTime), 'p')}</p>
                   <p className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong> {format(parse(trip.flightDate, "yyyy-MM-dd", new Date()), "PPP")}</p>
-                  <p className="flex items-center gap-2"><Clock className="h-4 w-4 text-primary" /> <strong>Boarding Time:</strong> {format(parseISO(trip.flightDateTime), 'p')}</p>
                 </div>
             </div>
         </div>
@@ -259,9 +268,9 @@ export default function PlannedTripsPage() {
             ? renderNoTrip() 
             : activeTrip.status === 'pending'
             ? renderPendingTrip(activeTrip)
-            : (activeTrip.status === 'matched' || activeTrip.status === 'completed') && matchedUser
-            ? renderMatchedTrip(activeTrip, matchedUser)
-            : renderNoTrip()
+            : (activeTrip.status === 'matched' || activeTrip.status === 'completed') && match && matchedPartner
+            ? renderMatchedTrip(activeTrip, match, matchedPartner)
+            : renderNoTrip() // Fallback
           }
         </CardContent>
         {activeTrip && isClient && !tripIsInThePast && (
@@ -274,7 +283,7 @@ export default function PlannedTripsPage() {
         )}
       </Card>
       
-       {activeTrip?.status === 'completed' && matchedUser && !activeTrip.userHasBeenFlagged && isClient && (
+       {activeTrip?.status === 'completed' && match && matchedPartner && !activeTrip.userHasBeenFlagged && isClient && (
           renderFlaggingCard()
        )}
     </div>

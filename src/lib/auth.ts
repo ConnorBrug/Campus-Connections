@@ -38,7 +38,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { app, auth, db, storage } from './firebase';
-import type { UserProfile, TripRequest, FlaggedEntry } from './types';
+import type { UserProfile, TripRequest, FlaggedEntry, Match } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
 
 export interface SignupData {
@@ -183,11 +183,19 @@ export async function deleteCurrentUserAccount(): Promise<void> {
     const userDocRef = doc(db, "users", userId);
     batch.delete(userDocRef);
     const activeTrip = await getActiveTripForUser(userId);
+    if (activeTrip && activeTrip.matchId) {
+        const matchRef = doc(db, 'matches', activeTrip.matchId);
+        // In a real app, you might want to notify the other user.
+        // For simplicity here, we just delete the match.
+        batch.delete(matchRef);
+        // And find the other trip to reset its status
+        const otherTripSnapshot = await getDocs(query(collection(db, 'tripRequests'), where('matchId', '==', activeTrip.matchId), where('userId', '!=', userId)));
+        if (!otherTripSnapshot.empty) {
+            const otherTripDoc = otherTripSnapshot.docs[0];
+            batch.update(otherTripDoc.ref, { status: 'pending', matchId: null, cancellationAlert: true });
+        }
+    }
     if (activeTrip) {
-      if (activeTrip.status === 'matched' && activeTrip.matchId && activeTrip.matchedUserId) {
-        const otherTripRef = doc(db, 'tripRequests', activeTrip.matchId);
-        batch.update(otherTripRef, { status: 'pending', matchId: null, matchedUserId: null, cancellationAlert: true });
-      }
       const tripDocRef = doc(db, 'tripRequests', activeTrip.id);
       batch.delete(tripDocRef);
     }
@@ -231,6 +239,12 @@ export async function getTripById(tripId: string): Promise<TripRequest | null> {
     const docRef = doc(db, 'tripRequests', tripId);
     const docSnap = await getDoc(docRef);
     return docSnap.exists() ? docSnap.data() as TripRequest : null;
+}
+
+export async function getMatchById(matchId: string): Promise<Match | null> {
+    const docRef = doc(db, 'matches', matchId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docSnap.data() as Match : null;
 }
 
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
@@ -337,13 +351,11 @@ export async function updateTripStatus(tripId: string, status: TripRequest['stat
       await deleteDoc(tripRef).catch(err => console.error("Failed to delete cancelled trip:", err));
     } else {
       const updateData: Partial<TripRequest> = { status };
-      if (status === 'matched' && matchId && matchedUserId) {
+      if (status === 'matched' && matchId) {
           updateData.matchId = matchId;
-          updateData.matchedUserId = matchedUserId;
-          updateData.cancellationAlert = false;
       } else if (status === 'pending') {
           updateData.matchId = undefined;
-          updateData.matchedUserId = undefined;
+          updateData.matchedUserId = undefined; // Kept for simplicity, though matchId is primary
       }
       if (cancellationAlert !== undefined) {
           updateData.cancellationAlert = cancellationAlert;
@@ -369,23 +381,29 @@ export function getChatId(userId1: string, userId2: string): string {
     return [userId1, userId2].sort().join('_');
 }
 
-export async function initiateChat(trip1: TripRequest, trip2: TripRequest): Promise<void> {
-    const chatId = getChatId(trip1.userId, trip2.userId);
+export async function initiateChat(matchId: string, participants: Match['participants']): Promise<void> {
+    const userIds = Object.keys(participants);
+    const chatId = getChatId(userIds[0], userIds[1]);
     const chatRef = doc(db, 'chats', chatId);
+
+    const participant1 = participants[userIds[0]];
+    const participant2 = participants[userIds[1]];
+
     const welcomeMessage = `
         This is an automated message to start your coordination.\n\n
-        - **${trip1.userName}**: Flight ${trip1.flightCode} at ${format(parseISO(trip1.flightDateTime), 'p')}. Bags: ${trip1.numberOfCarryons} carry-on(s), ${trip1.numberOfCheckedBags} checked.\n
-        - **${trip2.userName}**: Flight ${trip2.flightCode} at ${format(parseISO(trip2.flightDateTime), 'p')}. Bags: ${trip2.numberOfCarryons} carry-on(s), ${trip2.numberOfCheckedBags} checked.\n\n
+        - **${participant1.userName}**: Flight ${participant1.flightCode} at ${format(parseISO(participant1.flightDateTime), 'p')}.\n
+        - **${participant2.userName}**: Flight ${participant2.flightCode} at ${format(parseISO(participant2.flightDateTime), 'p')}.\n\n
         **Recommendation:** Plan to arrive at the airport at least 1 hour before the earlier flight's boarding time.
     `.trim().replace(/^ +/gm, '');
 
     await setDoc(chatRef, {
-        userIds: [trip1.userId, trip2.userId],
+        userIds: userIds,
         lastMessage: "Chat initiated.",
     }, { merge: true });
 
     await sendMessage(chatId, welcomeMessage, 'system');
 }
+
 
 export async function sendMessage(chatId: string, text: string, senderId: string): Promise<void> {
     const messagesColRef = collection(db, 'chats', chatId, 'messages');

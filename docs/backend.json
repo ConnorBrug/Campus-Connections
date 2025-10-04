@@ -81,6 +81,10 @@
             "cancelled",
             "completed"
           ]
+        },
+        "matchId": {
+          "type": "string",
+          "description": "ID of the match document in the /matches collection"
         }
       },
       "required": [
@@ -88,6 +92,49 @@
         "userId",
         "status"
       ]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Represents a confirmed match between two users.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "participantIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array containing the two matched user IDs."
+        },
+        "tripRequestIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Array containing the two matched trip request IDs."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "userId": { "type": "string" },
+              "userName": { "type": "string" },
+              "userPhotoUrl": { "type": "string", "format": "uri" },
+              "university": { "type": "string" },
+              "flightCode": { "type": "string" },
+              "flightDateTime": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "required": ["id", "participantIds", "tripRequestIds", "createdAt", "participants"]
     },
     "ChatMessage": {
       "title": "Chat Message",
@@ -141,6 +188,12 @@
         "$ref": "#/entities/TripRequest"
       },
       "description": "Collection of all trip requests from users."
+    },
+    "/matches/{matchId}": {
+      "schema": {
+        "$ref": "#/entities/Match"
+      },
+      "description": "Stores details of a confirmed match between two users."
     },
     "/chats/{chatId}": {
       "schema": {

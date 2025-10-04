@@ -5,10 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { UserCheck, MessageSquare, CalendarDays, Loader2, Frown } from 'lucide-react';
+import { UserCheck, MessageSquare, CalendarDays, Loader2, Frown, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { getTripById, getUserProfile } from '@/lib/auth';
-import type { TripRequest, UserProfile } from '@/lib/types';
+import { getTripById, getMatchById, getCurrentUser } from '@/lib/auth';
+import type { TripRequest, Match, UserProfile } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function MatchFoundPage() {
@@ -16,8 +16,9 @@ export default function MatchFoundPage() {
   const router = useRouter();
   const tripId = params.tripId as string;
 
-  const [tripDetails, setTripDetails] = useState<TripRequest | null>(null);
-  const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [matchDetails, setMatchDetails] = useState<Match | null>(null);
+  const [matchedPartner, setMatchedPartner] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -25,11 +26,35 @@ export default function MatchFoundPage() {
       setIsLoading(true);
       const fetchMatchData = async () => {
         try {
+          const user = await getCurrentUser();
+          if (!user) {
+            router.push('/login');
+            return;
+          }
+          setCurrentUser(user);
+
           const trip = await getTripById(tripId);
-          if (trip && trip.status === 'matched' && trip.matchedUserId) {
-            setTripDetails(trip);
-            const matchProfile = await getUserProfile(trip.matchedUserId);
-            setMatchedUser(matchProfile);
+          if (trip && trip.status === 'matched' && trip.matchId) {
+            const match = await getMatchById(trip.matchId);
+            if (match) {
+              setMatchDetails(match);
+              const partnerId = match.participantIds.find(id => id !== user.id);
+              if (partnerId) {
+                 const partnerDetails = match.participants[partnerId];
+                 // We can construct a partial UserProfile from the match data
+                 setMatchedPartner({
+                     id: partnerId,
+                     name: partnerDetails.userName,
+                     photoUrl: partnerDetails.userPhotoUrl,
+                     university: partnerDetails.university,
+                     // These are dummy values as they are not in the match doc
+                     email: '',
+                     emailVerified: true,
+                     gender: 'Prefer not to say',
+                     dateOfBirth: new Date().toISOString(),
+                 });
+              }
+            }
           } else if (trip) {
             // Trip exists but isn't matched, redirect
             router.replace('/planned-trips');
@@ -62,7 +87,7 @@ export default function MatchFoundPage() {
     );
   }
 
-  if (!tripDetails || !matchedUser) {
+  if (!matchDetails || !matchedPartner) {
     return (
       <div className="container mx-auto py-10 px-4 md:px-6 flex flex-col items-center">
         <Card className="w-full max-w-lg shadow-xl rounded-lg p-8 text-center">
@@ -85,6 +110,8 @@ export default function MatchFoundPage() {
     );
   }
 
+  const partnerChatId = matchedPartner.id;
+
   return (
     <div className="container mx-auto py-10 px-4 md:px-6 flex flex-col items-center">
       <Card className="w-full max-w-lg shadow-xl rounded-lg">
@@ -94,18 +121,18 @@ export default function MatchFoundPage() {
           </div>
           <CardTitle className="text-3xl md:text-4xl font-headline tracking-tight">It's a Match!</CardTitle>
           <CardDescription className="text-lg text-muted-foreground mt-2 px-4">
-            You've been matched with {matchedUser.name} for your upcoming trip.
+            You've been matched with {matchedPartner.name} for your upcoming trip.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8 px-6 md:px-8 py-8">
             <div className="flex flex-col items-center gap-4 text-center">
                  <Avatar className="h-24 w-24 border-2 border-primary">
-                    <AvatarImage src={matchedUser.photoUrl || ''} alt={matchedUser.name} data-ai-hint="person avatar"/>
-                    <AvatarFallback className="text-3xl">{getInitials(matchedUser.name)}</AvatarFallback>
+                    <AvatarImage src={matchedPartner.photoUrl || ''} alt={matchedPartner.name} data-ai-hint="person avatar"/>
+                    <AvatarFallback className="text-3xl">{getInitials(matchedPartner.name)}</AvatarFallback>
                 </Avatar>
                 <div>
-                    <h3 className="text-2xl font-bold">{matchedUser.name}</h3>
-                    <p className="text-md text-muted-foreground">{matchedUser.university}</p>
+                    <h3 className="text-2xl font-bold">{matchedPartner.name}</h3>
+                    <p className="text-md text-muted-foreground">{matchedPartner.university}</p>
                 </div>
             </div>
           
@@ -114,9 +141,9 @@ export default function MatchFoundPage() {
                     Next step: Coordinate your ride! Send a message to confirm your plans, pickup location, and share costs.
                 </p>
                 <Button asChild size="lg">
-                    <Link href={`/chat/${matchedUser.id}`}>
+                    <Link href={`/chat/${partnerChatId}`}>
                         <MessageSquare className="mr-2 h-5 w-5"/>
-                        Chat with {matchedUser.name.split(' ')[0]}
+                        Chat with {matchedPartner.name.split(' ')[0]}
                     </Link>
                 </Button>
             </div>

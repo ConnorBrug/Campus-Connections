@@ -1,10 +1,10 @@
 
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore';
-import { differenceInHours, isPast, parseISO, addHours, subHours, format } from 'date-fns';
-import type { TripRequest } from '@/lib/types';
-import { findBestMatch } from '@/lib/auth'; // Using the existing client-side logic as it's portable
+import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
+import { differenceInHours, isPast, parseISO, addHours } from 'date-fns';
+import type { TripRequest, Match } from '@/lib/types';
+import { findBestMatch } from '@/lib/auth';
 import { sendNotificationEmail } from '@/lib/email';
 
 
@@ -29,7 +29,6 @@ export async function GET(request: Request) {
     const allPendingTrips: TripRequest[] = [];
     pendingTripsSnapshot.forEach(doc => {
       const trip = doc.data() as TripRequest;
-      // Filter out trips that are already in the past
       if (!isPast(parseISO(trip.flightDateTime))) {
         allPendingTrips.push(trip);
       }
@@ -38,40 +37,63 @@ export async function GET(request: Request) {
     const tripsToMatch = [...allPendingTrips];
     const batch = writeBatch(adminDb);
     
-    while(tripsToMatch.length > 0) {
+    while(tripsToMatch.length > 1) {
         const currentTrip = tripsToMatch.shift();
         if(!currentTrip) continue;
 
         const potentialCandidates = tripsToMatch.filter(t => t.university === currentTrip.university);
         if(potentialCandidates.length === 0) continue;
         
-        // This part needs admin access to work correctly on server.
-        // For now, we assume flaggedUserIds are on the trip request object if needed, or fetched separately.
+        // This logic needs to be secure on the server, fetching flagged users is not implemented here for simplicity
         const { bestMatch } = findBestMatch(currentTrip, potentialCandidates, []);
 
         if(bestMatch) {
             matchesFound++;
             
-            // Update both trip documents in the batch
+            // A. Create a new Match document
+            const matchRef = doc(collection(adminDb, 'matches'));
+            const newMatch: Match = {
+                id: matchRef.id,
+                participantIds: [currentTrip.userId, bestMatch.userId],
+                tripRequestIds: [currentTrip.id, bestMatch.id],
+                createdAt: serverTimestamp(),
+                participants: {
+                    [currentTrip.userId]: {
+                        userName: currentTrip.userName,
+                        userPhotoUrl: currentTrip.userPhotoUrl,
+                        university: currentTrip.university,
+                        flightCode: currentTrip.flightCode,
+                        flightDateTime: currentTrip.flightDateTime,
+                    },
+                    [bestMatch.userId]: {
+                        userName: bestMatch.userName,
+                        userPhotoUrl: bestMatch.userPhotoUrl,
+                        university: bestMatch.university,
+                        flightCode: bestMatch.flightCode,
+                        flightDateTime: bestMatch.flightDateTime,
+                    }
+                }
+            };
+            batch.set(matchRef, newMatch);
+
+            // B. Update both trip documents to link to the new Match document
             const currentTripRef = doc(adminDb, 'tripRequests', currentTrip.id);
             const matchedTripRef = doc(adminDb, 'tripRequests', bestMatch.id);
+            batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id });
+            batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id });
 
-            batch.update(currentTripRef, { status: 'matched', matchedUserId: bestMatch.userId, matchId: bestMatch.id });
-            batch.update(matchedTripRef, { status: 'matched', matchedUserId: currentTrip.userId, matchId: currentTrip.id });
-
-            // Remove the matched trip from future consideration in this run
+            // C. Remove the matched trip from future consideration in this run
             const index = tripsToMatch.findIndex(t => t.id === bestMatch.id);
             if(index > -1) tripsToMatch.splice(index, 1);
 
-            // Send notifications (add to a list to send after batch commit)
-            // This is a simplified notification, a real app would have more details
-             await sendNotificationEmail({
+            // D. Send notifications
+            await sendNotificationEmail({
               to: currentTrip.userName, // In a real app, this would be the user's email
               subject: "You have a new match!",
               body: `You've been matched with ${bestMatch.userName} for your trip. Please check the app to coordinate.`,
               link: `${process.env.NEXT_PUBLIC_BASE_URL}/match-found/${currentTrip.id}`
             });
-             await sendNotificationEmail({
+            await sendNotificationEmail({
               to: bestMatch.userName,
               subject: "You have a new match!",
               body: `You've been matched with ${currentTrip.userName} for your trip. Please check the app to coordinate.`,
