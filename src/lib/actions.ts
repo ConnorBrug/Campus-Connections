@@ -6,7 +6,7 @@ import type { UserProfile, TripRequest } from './types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getUserProfile, saveTripRequest, updateTripStatus, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
-import { isValid, parseISO, format } from 'date-fns';
+import { isValid, parseISO, format, isBefore, addHours } from 'date-fns';
 import { cookies } from 'next/headers';
 import { adminDb } from './firebase-admin';
 import { admin } from './firebase-admin';
@@ -98,6 +98,15 @@ export async function submitTripDetailsAction(
 
     if (!isValid(flightDateTime)) {
         return { success: false, message: "Invalid date or time.", errors: {_form: ["The provided date/time is invalid."]}};
+    }
+    
+    const threeHoursFromNow = addHours(new Date(), 3);
+    if (isBefore(flightDateTime, threeHoursFromNow)) {
+        return {
+            success: false,
+            message: "Trip must be scheduled at least 3 hours in advance.",
+            errors: { _form: ["Please select a flight time at least 3 hours from now."] }
+        };
     }
 
 

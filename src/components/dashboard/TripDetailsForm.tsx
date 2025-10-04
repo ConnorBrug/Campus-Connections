@@ -20,11 +20,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { format, parse, startOfToday } from "date-fns";
-import { Plane, Ticket, Clock, PlaneTakeoff, Backpack, Luggage, CalendarIcon, Users, Loader2 } from "lucide-react";
+import { format, parse, startOfToday, addHours, isBefore, parseISO } from "date-fns";
+import { Plane, Ticket, Clock, PlaneTakeoff, Backpack, Luggage, CalendarIcon, Users, Loader2, Info } from "lucide-react";
 import { submitTripDetailsAction, type TripDetailsFormState } from "@/lib/actions";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
 
 const massachusettsAirports = [
   { name: "Boston Logan International", code: "BOS" },
@@ -112,7 +114,20 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     },
   });
   
-  const currentFlightDate = form.watch("flightDate");
+  const watchedValues = form.watch();
+
+  const isTimeInvalid = useMemo(() => {
+    if (!watchedValues.flightDate || !watchedValues.flightHour || !watchedValues.flightMinute || !watchedValues.flightPeriod) {
+      return false;
+    }
+    const flightTime = `${watchedValues.flightHour}:${watchedValues.flightMinute} ${watchedValues.flightPeriod}`;
+    const flightDateTimeStr = `${format(watchedValues.flightDate, 'yyyy-MM-dd')} ${flightTime}`;
+    const flightDateTime = parse(flightDateTimeStr, 'yyyy-MM-dd h:mm a', new Date());
+
+    const threeHoursFromNow = addHours(new Date(), 3);
+    return isBefore(flightDateTime, threeHoursFromNow);
+  }, [watchedValues]);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -120,9 +135,7 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     setMinCalendarDate(today);
 
     if (form.getValues("flightDate") === undefined) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        form.setValue("flightDate", today > tomorrow ? today : tomorrow, { shouldValidate: true });
+        form.setValue("flightDate", today, { shouldValidate: true });
     }
   }, [form]);
   
@@ -135,7 +148,7 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
             if(result.errors.departingAirport) form.setError("departingAirport", { type: "server", message: result.errors.departingAirport.join(', ') });
             if(result.errors.numberOfCarryons) form.setError("numberOfCarryons", { type: "server", message: result.errors.numberOfCarryons.join(', ') });
             if(result.errors.numberOfCheckedBags) form.setError("numberOfCheckedBags", { type: "server", message: result.errors.numberOfCheckedBags.join(', ') });
-            if(result.errors._form) toast({ title: "Form Error", description: result.errors._form.join(', '), variant: "destructive" });
+            if(result.errors._form) toast({ title: "Submission Error", description: result.errors._form.join(', '), variant: "destructive" });
         }
     });
   };
@@ -203,7 +216,7 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
                           {isClient && (
                             <Calendar
                               mode="single"
-                              selected={currentFlightDate}
+                              selected={field.value}
                               onSelect={(date) => {
                                 if(date) field.onChange(date); else field.onChange(undefined);
                                 setIsCalendarOpen(false);
@@ -214,8 +227,8 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
                                   }
                                   return date < new Date(new Date().setHours(0,0,0,0));
                               }}
-                              initialFocus={!currentFlightDate}
-                              defaultMonth={currentFlightDate || minCalendarDate}
+                              initialFocus={!field.value}
+                              defaultMonth={field.value || minCalendarDate}
                             />
                           )}
                         </PopoverContent>
@@ -402,7 +415,15 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
                   <Input type="hidden" {...form.register("university")} />
               </div>
             </fieldset>
-            <Button type="submit" className="w-full" disabled={isTripPending || isPending || !isClient}>
+            {isTimeInvalid && (
+              <Alert variant="destructive" className="mt-4">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Trip requests must be for a flight at least 3 hours from now. Please select a later time or date.
+                </AlertDescription>
+              </Alert>
+            )}
+            <Button type="submit" className="w-full" disabled={isTripPending || isPending || !isClient || isTimeInvalid}>
               {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -420,7 +441,3 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     </Card>
   );
 }
-
-    
-
-    
