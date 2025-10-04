@@ -254,7 +254,6 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     const q = query(
         tripsRef, 
         where("userId", "==", userId), 
-        orderBy("createdAt", "desc"),
         limit(1)
     );
 
