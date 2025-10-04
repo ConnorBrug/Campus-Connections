@@ -250,20 +250,30 @@ export async function getMatchById(matchId: string): Promise<Match | null> {
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
     const tripsRef = collection(db, 'tripRequests');
     
-    // This query combines multiple statuses and requires a composite index.
     const q = query(
         tripsRef, 
         where("userId", "==", userId), 
-        where("status", "in", ["pending", "matched", "completed"]),
-        orderBy("flightDateTime", "desc"),
+        orderBy("createdAt", "desc"),
         limit(1)
     );
 
     const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-        return querySnapshot.docs[0].data() as TripRequest;
+    if (querySnapshot.empty) {
+        return null;
     }
+    
+    const latestTrip = querySnapshot.docs[0].data() as TripRequest;
 
+    // A trip is only "active" if it is pending or matched, and not yet completed.
+    if (latestTrip.status === 'pending' || latestTrip.status === 'matched') {
+         if (isPast(addHours(parseISO(latestTrip.flightDateTime), 4))) {
+            // If the trip is more than 4 hours in the past, consider it implicitly completed
+            // This is a client-side safeguard. The cron job handles official completion.
+            return null;
+        }
+        return latestTrip;
+    }
+    
     return null;
 }
 
