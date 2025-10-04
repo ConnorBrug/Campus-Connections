@@ -1,142 +1,121 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset enforces a user-ownership model for trip requests and restricts access to matches and chats to authorized participants.
+ * @fileoverview Firestore Security Rules for Ride Sharing App
+ *
+ * Core Philosophy:
+ * This ruleset prioritizes user data protection by enforcing strict ownership and access controls.
+ * Users can only manage their own profiles and trip requests. Matches are accessible to the
+ * participants involved. Chat access is restricted to members of the chat.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profiles, accessible only to the owning user.
- * - /tripRequests/{tripId}: Stores trip requests, accessible only to the creating user.
- * - /matches/{matchId}: Stores match data, accessible to the two matched users.
- * - /chats/{chatId}: Stores chat metadata, accessible to the chat participants.
- * - /chats/{chatId}/messages/{messageId}: Stores chat messages, accessible to chat participants.
+ * - /users/{userId}: User profiles, where {userId} is the Firebase Auth UID.
+ * - /tripRequests/{tripId}: Trip requests made by users.
+ * - /matches/{matchId}: Match details between two users, with denormalized data.
+ * - /chats/{chatId}: Chat sessions.
+ * - /chats/{chatId}/messages/{messageId}: Chat messages within a session.
  *
  * Key Security Decisions:
- * - Users can only create, read, update, and delete their own trip requests.
- * - Listing trips is restricted to those belonging to the authenticated user.
- * - Matches are accessible only to the two users involved in the match, verified via the participantIds array.
- * - Chats and their messages are accessible only to the users who are part of the chat.
- * - User listing is disallowed.
+ * - Users can only read and write their own user profiles.
+ * - Trip requests can be created, updated, and deleted only by the request's owner.
+ * - Matches are accessible to participating users.
+ * - Chat messages are accessible to chat participants.
  *
  * Denormalization for Authorization:
- * - The /matches/{matchId} documents contain a participantIds array which is used to authorize access to the match data.
- *   This avoids needing to query other collections to determine access.
- * - The /chats/{chatId} documents contain a userIds array which is used to authorize access to the chat and messages.
- *   This avoids needing to query other collections to determine access.
- *
- * Structural Segregation:
- * - No explicit structural segregation is used.
+ * - Matches include a `participantIds` array to easily check user authorization.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Allows access to user profile documents.
+     * @description Protects user profiles, ensuring only the owner can read and write.
      * @path /users/{userId}
-     * @allow (create) User with ID 'user123' can create their own profile.
-     * @deny (create) User with ID 'user123' cannot create a profile for 'user456'.
-     * @allow (get) User with ID 'user123' can read their own profile.
-     * @deny (get) User with ID 'user123' cannot read the profile of 'user456'.
-     * @allow (update) User with ID 'user123' can update their own profile.
-     * @deny (update) User with ID 'user123' cannot update the profile of 'user456'.
-     * @allow (delete) User with ID 'user123' can delete their own profile.
-     * @deny (delete) User with ID 'user123' cannot delete the profile of 'user456'.
-     * @principle Enforces document ownership for all operations.
+     * @allow (create, update, get, delete) User with UID 'user123' can create/update/get/delete their own profile at /users/user123.
+     * @deny (create, update, get, delete) User with UID 'user456' cannot create/update/get/delete profile at /users/user123.
+     * @principle Enforces strict user-ownership for profile data.
      */
     match /users/{userId} {
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow get: if isOwner(userId);
       allow list: if false;
-      allow update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
 
     /**
-     * @description Controls access to trip request documents.
+     * @description Manages trip requests, allowing users to create, modify, and delete their own requests.
      * @path /tripRequests/{tripId}
-     * @allow (create) User with ID 'user123' can create a trip request with userId 'user123'.
-     * @deny (create) User with ID 'user123' cannot create a trip request with userId 'user456'.
-     * @allow (get) User with ID 'user123' can read a trip request with userId 'user123'.
-     * @deny (get) User with ID 'user123' cannot read a trip request with userId 'user456'.
-     * @allow (update) User with ID 'user123' can update a trip request with userId 'user123'.
-     * @deny (update) User with ID 'user123' cannot update a trip request with userId 'user456'.
-     * @allow (delete) User with ID 'user123' can delete a trip request with userId 'user123'.
-     * @deny (delete) User with ID 'user123' cannot delete a trip request with userId 'user456'.
-     * @principle Enforces document ownership for writes and enforces userId consistency.
+     * @allow (create) User with UID 'user123' can create a trip request with userId: 'user123'.
+     * @allow (update, delete) User with UID 'user123' can update/delete their own trip request at /tripRequests/trip789, where the request's userId is 'user123'.
+     * @deny (create) User with UID 'user456' cannot create a trip request with userId: 'user123'.
+     * @deny (update, delete) User with UID 'user456' cannot update/delete trip request at /tripRequests/trip789, where the request's userId is 'user123'.
+     * @principle Restricts trip request management to the request owner.
      */
     match /tripRequests/{tripId} {
+      allow get: if isSignedIn();
+      allow list: if request.query.limit <= 10 && request.query.field == 'userId' && request.query.op == '==' && request.query.value == request.auth.uid;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow list: if isSignedIn() && request.query.where("userId", "==", request.auth.uid).size() > 0;
-      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && isExistingOwner(resource.data.userId);
+      allow delete: if isSignedIn() && isExistingOwner(resource.data.userId);
     }
 
     /**
-     * @description Manages access to match documents, allowing access to the two participants in the match.
+     * @description Secures match details, granting access only to participating users.
      * @path /matches/{matchId}
-     * @allow (create) N/A - Creation should be handled by backend logic
-     * @deny (create) Always denied.
-     * @allow (get) User with ID 'user123' can read match document if 'user123' is in participantIds.
-     * @deny (get) User with ID 'user123' cannot read match document if 'user123' is not in participantIds.
-     * @allow (update) User with ID 'user123' can update match document if 'user123' is in participantIds.
-     * @deny (update) User with ID 'user123' cannot update match document if 'user123' is not in participantIds.
-     * @allow (delete) N/A - Deletion should be handled by backend logic or specific admin roles.
-     * @deny (delete) Always denied.
-     * @principle Restricts access to the two users involved in the match, verified via the participantIds array.
+     * @allow (get) User with UID 'user123' can get match details at /matches/match456 if 'user123' is in the participantIds array.
+     * @deny (get) User with UID 'user789' cannot get match details at /matches/match456 if 'user789' is not in the participantIds array.
+     * @principle Grants match access to participants based on the 'participantIds' array.
      */
     match /matches/{matchId} {
-        allow create: if false;
-        allow get: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
-        allow list: if false;
-        allow update: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
-        allow delete: if false;
+      allow get: if isSignedIn() && resource.data.participantIds.hasAny([request.auth.uid]);
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     /**
-     * @description Controls access to chat documents, ensuring only chat participants can access the chat metadata.
+     * @description Protects chat metadata, allowing access only to members.
      * @path /chats/{chatId}
-     * @allow (create) N/A - Creation should be handled by backend logic.
-     * @deny (create) Always denied.
-     * @allow (get) User with ID 'user123' can read chat document if 'user123' is in userIds.
-     * @deny (get) User with ID 'user123' cannot read chat document if 'user123' is not in userIds.
-     * @allow (update) User with ID 'user123' can update chat document if 'user123' is in userIds.
-     * @deny (update) User with ID 'user123' cannot update chat document if 'user123' is not in userIds.
-     * @allow (delete) N/A - Deletion should be handled by backend logic or specific admin roles.
-     * @deny (delete) Always denied.
-     * @principle Restricts access to chat metadata to only those users participating in the chat, based on the userIds array.
+     * @allow (get) User with UID 'user123' can read chat details at /chats/chat789 if 'user123' is in the userIds array.
+     * @deny (get) User with UID 'user456' cannot read chat details at /chats/chat789 if 'user456' is not in the userIds array.
+     * @principle Limits chat access to members listed in the userIds array.
      */
     match /chats/{chatId} {
-        allow create: if false;
         allow get: if isSignedIn() && resource.data.userIds.hasAny([request.auth.uid]);
         allow list: if false;
-        allow update: if isSignedIn() && resource.data.userIds.hasAny([request.auth.uid]);
+        allow create: if false;
+        allow update: if false;
         allow delete: if false;
     }
 
     /**
-     * @description Manages access to chat messages, ensuring only chat participants can access the messages.
+     * @description Secures chat messages, ensuring only chat participants can read and write messages.
      * @path /chats/{chatId}/messages/{messageId}
-     * @allow (create) User with ID 'user123' can create a message if 'user123' is in userIds of the parent chat document.
-     * @deny (create) User with ID 'user123' cannot create a message if 'user123' is not in userIds of the parent chat document.
-     * @allow (get) User with ID 'user123' can read a message if 'user123' is in userIds of the parent chat document.
-     * @deny (get) User with ID 'user123' cannot read a message if 'user123' is not in userIds of the parent chat document.
-     * @allow (update) User with ID 'user123' can update a message if 'user123' is in userIds of the parent chat document.
-     * @deny (update) User with ID 'user123' cannot update a message if 'user123' is not in userIds of the parent chat document.
-     * @allow (delete) User with ID 'user123' can delete a message if 'user123' is in userIds of the parent chat document.
-     * @deny (delete) User with ID 'user123' cannot delete a message if 'user123' is not in userIds of the parent chat document.
-     * @principle Restricts access to chat messages to only those users participating in the chat, based on the userIds array in the parent chat document.
+     * @allow (create) User with UID 'user123' can create a message in /chats/chat789/messages/msg101 if 'user123' is a member of chat 'chat789'.
+     * @allow (get, list) User with UID 'user123' can read messages in /chats/chat789/messages if 'user123' is a member of chat 'chat789'.
+     * @deny (create) User with UID 'user456' cannot create a message in /chats/chat789/messages/msg101 if 'user456' is not a member of chat 'chat789'.
+     * @deny (get, list) User with UID 'user456' cannot read messages in /chats/chat789/messages if 'user456' is not a member of chat 'chat789'.
+     * @principle Restricts message access to chat participants.
      */
     match /chats/{chatId}/messages/{messageId} {
-        allow create: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
         allow get: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
         allow list: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
-        allow update: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
-        allow delete: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow create: if isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userIds.hasAny([request.auth.uid]);
+        allow update: if false;
+        allow delete: if false;
     }
   }
 
   // Helper functions
   function isSignedIn() {
     return request.auth != null;
+  }
+
+  function isOwner(userId) {
+    return request.auth.uid == userId;
+  }
+
+  function isExistingOwner(userId) {
+      return isSignedIn() && isOwner(userId) && resource != null;
   }
 }
