@@ -56,4 +56,4 @@ function getAdminStorage() {
     return admin.storage();
 }
 
-export { admin, getAdminDb, getAdminAuth, getAdminStorage };
+export { getAdminDb, getAdminAuth, getAdminStorage };
