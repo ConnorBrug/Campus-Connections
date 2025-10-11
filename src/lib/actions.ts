@@ -30,6 +30,7 @@ const TripDetailsSchema = z.object({
   campusArea: z.string().optional(),
 });
 
+type TripDetailsFormValues = z.infer<typeof TripDetailsSchema>;
 
 export type TripDetailsFormState = {
   success?: boolean;
@@ -59,22 +60,9 @@ const combineFlightTimeParts = (hour: string, minute: string, period: 'AM' | 'PM
 // --- ACTION: SUBMIT TRIP DETAILS (Deferred Matching) ---
 export async function submitTripDetailsAction(
   prevState: TripDetailsFormState,
-  formData: FormData
+  data: TripDetailsFormValues
 ): Promise<TripDetailsFormState> {
-    const validatedFields = TripDetailsSchema.safeParse({
-        userId: formData.get('userId'),
-        university: formData.get('university'),
-        flightCode: formData.get('flightCode'),
-        flightDate: new Date(formData.get('flightDate') as string),
-        flightHour: formData.get('flightHour'),
-        flightMinute: formData.get('flightMinute'),
-        flightPeriod: formData.get('flightPeriod'),
-        departingAirport: formData.get('departingAirport'),
-        numberOfCarryons: formData.get('numberOfCarryons'),
-        numberOfCheckedBags: formData.get('numberOfCheckedBags'),
-        preferredMatchGender: formData.get('preferredMatchGender'),
-        campusArea: formData.get('campusArea'),
-    });
+    const validatedFields = TripDetailsSchema.safeParse(data);
 
     if (!validatedFields.success) {
       return {
