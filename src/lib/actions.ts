@@ -5,11 +5,10 @@ import { z } from 'zod';
 import type { UserProfile, TripRequest } from './types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getUserProfile, saveTripRequest, updateTripStatus, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
+import { getUserProfile, saveTripRequest, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
 import { isValid, parseISO, format, isBefore, addHours } from 'date-fns';
 import { cookies } from 'next/headers';
-import { adminDb } from './firebase-admin';
-import { admin } from './firebase-admin';
+import { getAdminDb } from './firebase-admin';
 import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 
@@ -242,6 +241,7 @@ export async function cancelTripAction(tripId: string): Promise<{ success: boole
     }
 
     try {
+        const adminDb = getAdminDb();
         // If the trip was matched, we need to handle the other user as well.
         if (trip.status === 'matched' && trip.matchId) {
             const matchRef = doc(adminDb, 'matches', trip.matchId);

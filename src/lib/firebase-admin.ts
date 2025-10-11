@@ -1,32 +1,59 @@
 
 'use server';
 
-// This file is simplified for the final version. It will be restored after secrets are set.
 import admin from 'firebase-admin';
 
-if (!admin.apps.length) {
+let adminApp: admin.app.App | null = null;
+
+function initializeAdminApp() {
+  if (admin.apps.length > 0) {
+    if (!adminApp) {
+        adminApp = admin.app();
+    }
+    return adminApp;
+  }
+
   try {
     const serviceAccount = JSON.parse(
       process.env.FIREBASE_SERVICE_ACCOUNT_JSON as string
     );
-    admin.initializeApp({
+    adminApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      // The databaseURL is required only if you are using the Realtime Database.
-      // databaseURL: `https://${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.firebaseio.com`
     });
-     console.log("Firebase Admin SDK initialized successfully.");
+    console.log("Firebase Admin SDK initialized successfully.");
+    return adminApp;
   } catch (e: any) {
     if (e.code === 'ENOENT' || !process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        console.log("Firebase Admin SDK not initialized. This is expected for the initial deployment. Please add environment variables after this build succeeds.");
+      console.log("Firebase Admin SDK not initialized. Service account credentials not found.");
     } else {
-        console.error('Firebase Admin SDK initialization error:', e.stack);
+      console.error('Firebase Admin SDK initialization error:', e.stack);
     }
+    return null;
   }
 }
 
+function getAdminDb() {
+  const app = initializeAdminApp();
+  if (!app) {
+    throw new Error("Firebase Admin SDK not initialized. Cannot access Firestore.");
+  }
+  return admin.firestore();
+}
 
-const adminDb = admin.firestore();
-const adminAuth = admin.auth();
-const adminStorage = admin.storage();
+function getAdminAuth() {
+    const app = initializeAdminApp();
+    if (!app) {
+        throw new Error("Firebase Admin SDK not initialized. Cannot access Auth.");
+    }
+    return admin.auth();
+}
 
-export { admin, adminDb, adminAuth, adminStorage };
+function getAdminStorage() {
+    const app = initializeAdminApp();
+    if (!app) {
+        throw new Error("Firebase Admin SDK not initialized. Cannot access Storage.");
+    }
+    return admin.storage();
+}
+
+export { admin, getAdminDb, getAdminAuth, getAdminStorage };

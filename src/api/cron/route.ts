@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
+import { getAdminDb } from '@/lib/firebase-admin';
 import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { differenceInHours, isPast, parseISO, addHours } from 'date-fns';
 import type { TripRequest, Match } from '@/lib/types';
@@ -22,6 +22,7 @@ export async function GET(request: Request) {
   let tripsCleaned = 0;
   
   try {
+    const adminDb = getAdminDb();
     // --- 1. Find and process matches ---
     const pendingTripsQuery = query(collection(adminDb, 'tripRequests'), where('status', '==', 'pending'));
     const pendingTripsSnapshot = await getDocs(pendingTripsQuery);
