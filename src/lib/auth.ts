@@ -40,6 +40,8 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import { app, auth, db, storage } from './firebase';
 import type { UserProfile, TripRequest, FlaggedEntry, Match } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export interface SignupData {
   name: string;
@@ -232,7 +234,17 @@ export async function saveTripRequest(tripData: Omit<TripRequest, 'id' | 'create
         id: docRef.id,
         createdAt: serverTimestamp(),
     };
-    await setDoc(docRef, newTrip);
+    
+    setDoc(docRef, newTrip)
+      .catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'create',
+            requestResourceData: newTrip
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+      
     return newTrip;
 }
 

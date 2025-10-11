@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types';
 import { useEffect, useState, createContext, useContext, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 
 interface AppContextType {
   userProfile: UserProfile | null;
@@ -84,6 +85,7 @@ export default function AppLayout({
 
   return (
     <AppContext.Provider value={contextValue}>
+        <FirebaseErrorListener />
         <div className="flex min-h-screen flex-col">
           <Header />
           <main className="flex-1">{children}</main>
