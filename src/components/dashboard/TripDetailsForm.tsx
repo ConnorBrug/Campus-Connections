@@ -152,6 +152,10 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     }
   }, [state, form, toast]);
 
+  const onSubmit = (data: TripDetailsFormValues) => {
+    dispatch(data);
+  };
+
 
   return (
     <Card className="w-full shadow-lg">
@@ -164,11 +168,7 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
       </CardHeader>
       <CardContent>
         <Form {...form}>
-        <form action={dispatch} onSubmit={(evt) => {
-            form.handleSubmit(() => {
-              // Valid client-side, let the action proceed
-            })(evt);
-          }} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <fieldset disabled={isTripPending || form.formState.isSubmitting}>
               <div className="space-y-6">
                 <FormField
@@ -445,3 +445,5 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     </Card>
   );
 }
+
+    
