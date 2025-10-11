@@ -140,10 +140,6 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
         form.setValue("flightDate", today, { shouldValidate: true });
     }
   }, [form]);
-  
-  const onSubmit = (data: TripDetailsFormValues) => {
-    dispatch(data);
-  };
 
   useEffect(() => {
     if (state?.errors) {
@@ -168,7 +164,11 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
       </CardHeader>
       <CardContent>
         <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form action={dispatch} onSubmit={(evt) => {
+            form.handleSubmit(() => {
+              // Valid client-side, let the action proceed
+            })(evt);
+          }} className="space-y-6">
             <fieldset disabled={isTripPending || form.formState.isSubmitting}>
               <div className="space-y-6">
                 <FormField

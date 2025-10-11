@@ -6,7 +6,7 @@ import type { UserProfile, TripRequest } from './types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getUserProfile, saveTripRequest, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
-import { isValid, parseISO, format, isBefore, addHours } from 'date-fns';
+import { isValid, parse, format, isBefore, addHours } from 'date-fns';
 import { cookies } from 'next/headers';
 import { adminDb } from './firebase-admin';
 import { getServerUser } from './server-auth';
@@ -59,10 +59,32 @@ const combineFlightTimeParts = (hour: string, minute: string, period: 'AM' | 'PM
 // --- ACTION: SUBMIT TRIP DETAILS (Deferred Matching) ---
 export async function submitTripDetailsAction(
   prevState: TripDetailsFormState,
-  data: z.infer<typeof TripDetailsSchema>
+  formData: FormData
 ): Promise<TripDetailsFormState> {
-    // Schema is already validated by react-hook-form on the client
-    const { userId, flightCode, flightDate, flightHour, flightMinute, flightPeriod, departingAirport, numberOfCarryons, numberOfCheckedBags, university, preferredMatchGender, campusArea } = data;
+    const validatedFields = TripDetailsSchema.safeParse({
+        userId: formData.get('userId'),
+        university: formData.get('university'),
+        flightCode: formData.get('flightCode'),
+        flightDate: new Date(formData.get('flightDate') as string),
+        flightHour: formData.get('flightHour'),
+        flightMinute: formData.get('flightMinute'),
+        flightPeriod: formData.get('flightPeriod'),
+        departingAirport: formData.get('departingAirport'),
+        numberOfCarryons: formData.get('numberOfCarryons'),
+        numberOfCheckedBags: formData.get('numberOfCheckedBags'),
+        preferredMatchGender: formData.get('preferredMatchGender'),
+        campusArea: formData.get('campusArea'),
+    });
+
+    if (!validatedFields.success) {
+      return {
+        success: false,
+        message: "Invalid form data.",
+        errors: validatedFields.error.flatten().fieldErrors,
+      };
+    }
+    
+    const { userId, flightCode, flightDate, flightHour, flightMinute, flightPeriod, departingAirport, numberOfCarryons, numberOfCheckedBags, university, preferredMatchGender, campusArea } = validatedFields.data;
 
     const [currentUser, existingTrip] = await Promise.all([
       getUserProfile(userId),
@@ -94,7 +116,7 @@ export async function submitTripDetailsAction(
     }
     
     const flightTime = combineFlightTimeParts(flightHour, flightMinute, flightPeriod);
-    const flightDateTime = parseISO(`${format(flightDate, 'yyyy-MM-dd')}T${flightTime}:00`);
+    const flightDateTime = parse(`${format(flightDate, 'yyyy-MM-dd')}T${flightTime}:00`, "yyyy-MM-dd'T'HH:mm:ss", new Date());
 
     if (!isValid(flightDateTime)) {
         return { success: false, message: "Invalid date or time.", errors: {_form: ["The provided date/time is invalid."]}};
