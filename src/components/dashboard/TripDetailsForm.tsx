@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { format, parse, startOfToday, addHours, isBefore, parseISO } from "date-fns";
 import { Plane, Ticket, Clock, PlaneTakeoff, Backpack, Luggage, CalendarIcon, Users, Loader2, Info } from "lucide-react";
 import { submitTripDetailsAction, type TripDetailsFormState } from "@/lib/actions";
-import { useEffect, useState, useTransition, useMemo } from "react";
+import { useEffect, useState, useMemo, useActionState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -86,10 +86,12 @@ interface TripDetailsFormProps {
 
 export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripDetailsFormProps) {
   const { toast } = useToast();
-  const [isPending, startTransition] = useTransition();
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [minCalendarDate, setMinCalendarDate] = useState<Date | undefined>(undefined);
+
+  const initialState: TripDetailsFormState = { message: undefined, errors: undefined };
+  const [state, dispatch] = useActionState(submitTripDetailsAction, initialState);
   
   const airports = userUniversity === 'Vanderbilt' ? tennesseeAirports : massachusettsAirports;
   const defaultAirport = userUniversity === 'Vanderbilt' ? 'BNA' : 'BOS';
@@ -140,18 +142,20 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
   }, [form]);
   
   const onSubmit = (data: TripDetailsFormValues) => {
-    startTransition(async () => {
-        const result = await submitTripDetailsAction(data);
-        if (result?.errors) {
-            if(result.errors.flightCode) form.setError("flightCode", { type: "server", message: result.errors.flightCode.join(', ') });
-            if(result.errors.flightDate) form.setError("flightDate", { type: "server", message: result.errors.flightDate.join(', ') });
-            if(result.errors.departingAirport) form.setError("departingAirport", { type: "server", message: result.errors.departingAirport.join(', ') });
-            if(result.errors.numberOfCarryons) form.setError("numberOfCarryons", { type: "server", message: result.errors.numberOfCarryons.join(', ') });
-            if(result.errors.numberOfCheckedBags) form.setError("numberOfCheckedBags", { type: "server", message: result.errors.numberOfCheckedBags.join(', ') });
-            if(result.errors._form) toast({ title: "Submission Error", description: result.errors._form.join(', '), variant: "destructive" });
-        }
-    });
+    dispatch(data);
   };
+
+  useEffect(() => {
+    if (state?.errors) {
+      if (state.errors.flightCode) form.setError("flightCode", { type: "server", message: state.errors.flightCode.join(', ') });
+      if (state.errors.flightDate) form.setError("flightDate", { type: "server", message: state.errors.flightDate.join(', ') });
+      if (state.errors.departingAirport) form.setError("departingAirport", { type: "server", message: state.errors.departingAirport.join(', ') });
+      if (state.errors.numberOfCarryons) form.setError("numberOfCarryons", { type: "server", message: state.errors.numberOfCarryons.join(', ') });
+      if (state.errors.numberOfCheckedBags) form.setError("numberOfCheckedBags", { type: "server", message: state.errors.numberOfCheckedBags.join(', ') });
+      if (state.errors._form) toast({ title: "Submission Error", description: state.errors._form.join(', '), variant: "destructive" });
+    }
+  }, [state, form, toast]);
+
 
   return (
     <Card className="w-full shadow-lg">
@@ -164,8 +168,8 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <fieldset disabled={isTripPending || isPending}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <fieldset disabled={isTripPending || form.formState.isSubmitting}>
               <div className="space-y-6">
                 <FormField
                   control={form.control}
@@ -423,8 +427,8 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
                 </AlertDescription>
               </Alert>
             )}
-            <Button type="submit" className="w-full" disabled={isTripPending || isPending || !isClient || isTimeInvalid}>
-              {isPending ? (
+            <Button type="submit" className="w-full" disabled={isTripPending || form.formState.isSubmitting || !isClient || isTimeInvalid}>
+              {form.formState.isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Submitting...
