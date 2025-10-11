@@ -108,14 +108,14 @@ export default function LoginPage() {
                 </div>
               <Input id="password" name="password" type="password" placeholder="Password" required value={password} onChange={handleInputChange(setPassword)} autoComplete="current-password" disabled={isSubmitting} />
             </div>
+             <Button type="submit" className="w-full" disabled={isSubmitting}>
+                Login
+                <LogIn className="ml-2 h-4 w-4" />
+            </Button>
           </form>
         </CardContent>
         <CardFooter className="flex flex-col items-center pt-4">
             <div className="flex w-full flex-col items-center space-y-4">
-                 <Button type="submit" onClick={handleSubmit} className="w-full" disabled={isSubmitting}>
-                    Login
-                    <LogIn className="ml-2 h-4 w-4" />
-                </Button>
                 <div className="flex flex-col items-center space-y-2">
                      <p className="text-sm text-muted-foreground">
                         Don&apos;t have an account?{' '}
