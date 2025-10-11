@@ -68,7 +68,6 @@ export default function HomePage() {
                 <Users className="h-12 w-12 text-primary mb-4" />
                 <h3 className="text-xl font-semibold mb-2 font-headline">Find Matches</h3>
                 <p className="text-muted-foreground">Our system finds students from your campus with similar travel plans.</p>
-
               </div>
               <div className="flex flex-col items-center text-center p-6 bg-card rounded-lg shadow-lg">
                 <CarFront className="h-12 w-12 text-primary mb-4" />
