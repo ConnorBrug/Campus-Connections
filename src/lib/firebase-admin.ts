@@ -1,25 +1,27 @@
 // src/lib/firebase-admin.ts
-import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
+import { initializeApp, cert, getApps, getApp, App } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
 
+let adminApp: App;
 
-let serviceAccount;
-try {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON as string);
-} catch (error) {
-    console.error("Error parsing Firebase service account JSON. Make sure FIREBASE_SERVICE_ACCOUNT_JSON is set correctly.", error);
-    // In a production environment, you might want to throw an error or handle this differently.
-    // For now, we'll let the app attempt to start, but services will fail.
+if (getApps().length === 0) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    adminApp = initializeApp({
+      credential: cert(serviceAccount),
+    });
+  } else {
+    // This is a fallback for local development or environments
+    // where the full JSON isn't set. It might not work for all services.
+    console.warn("FIREBASE_SERVICE_ACCOUNT_JSON not set. Using default application credentials. This may not work for all services.");
+    adminApp = initializeApp();
+  }
+} else {
+  adminApp = getApp();
 }
 
-
-const app = serviceAccount && getApps().length === 0
-  ? initializeApp({ credential: cert(serviceAccount) })
-  : getApp();
-
-
-export const adminDb = getFirestore(app);
-export const adminAuth = getAuth(app);
-export const adminStorage = getStorage(app);
+export const adminDb = getFirestore(adminApp);
+export const adminAuth = getAuth(adminApp);
+export const adminStorage = getStorage(adminApp);
