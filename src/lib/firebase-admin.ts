@@ -1,59 +1,25 @@
+// src/lib/firebase-admin.ts
+import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 
-'use server';
 
-import admin from 'firebase-admin';
-
-let adminApp: admin.app.App | null = null;
-
-function initializeAdminApp() {
-  if (admin.apps.length > 0) {
-    if (!adminApp) {
-        adminApp = admin.app();
-    }
-    return adminApp;
-  }
-
-  try {
-    const serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_JSON as string
-    );
-    adminApp = admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("Firebase Admin SDK initialized successfully.");
-    return adminApp;
-  } catch (e: any) {
-    if (e.code === 'ENOENT' || !process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      console.log("Firebase Admin SDK not initialized. Service account credentials not found.");
-    } else {
-      console.error('Firebase Admin SDK initialization error:', e.stack);
-    }
-    return null;
-  }
+let serviceAccount;
+try {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON as string);
+} catch (error) {
+    console.error("Error parsing Firebase service account JSON. Make sure FIREBASE_SERVICE_ACCOUNT_JSON is set correctly.", error);
+    // In a production environment, you might want to throw an error or handle this differently.
+    // For now, we'll let the app attempt to start, but services will fail.
 }
 
-function getAdminDb() {
-  const app = initializeAdminApp();
-  if (!app) {
-    throw new Error("Firebase Admin SDK not initialized. Cannot access Firestore.");
-  }
-  return admin.firestore();
-}
 
-function getAdminAuth() {
-    const app = initializeAdminApp();
-    if (!app) {
-        throw new Error("Firebase Admin SDK not initialized. Cannot access Auth.");
-    }
-    return admin.auth();
-}
+const app = serviceAccount && getApps().length === 0
+  ? initializeApp({ credential: cert(serviceAccount) })
+  : getApp();
 
-function getAdminStorage() {
-    const app = initializeAdminApp();
-    if (!app) {
-        throw new Error("Firebase Admin SDK not initialized. Cannot access Storage.");
-    }
-    return admin.storage();
-}
 
-export { getAdminDb, getAdminAuth, getAdminStorage };
+export const adminDb = getFirestore(app);
+export const adminAuth = getAuth(app);
+export const adminStorage = getStorage(app);

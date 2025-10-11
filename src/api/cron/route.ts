@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase-admin';
+import { adminDb } from '@/lib/firebase-admin';
 import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
 import { differenceInHours, isPast, parseISO, addHours } from 'date-fns';
 import type { TripRequest, Match } from '@/lib/types';
@@ -22,10 +22,9 @@ export async function GET(request: Request) {
   let tripsCleaned = 0;
   
   try {
-    const adminDb = getAdminDb();
     // --- 1. Find and process matches ---
-    const pendingTripsQuery = query(collection(adminDb, 'tripRequests'), where('status', '==', 'pending'));
-    const pendingTripsSnapshot = await getDocs(pendingTripsQuery);
+    const pendingTripsQuery = adminDb.collection('tripRequests').where('status', '==', 'pending');
+    const pendingTripsSnapshot = await pendingTripsQuery.get();
 
     const allPendingTrips: TripRequest[] = [];
     pendingTripsSnapshot.forEach(doc => {
@@ -37,7 +36,7 @@ export async function GET(request: Request) {
     });
 
     const tripsToMatch = [...allPendingTrips];
-    const batch = writeBatch(adminDb);
+    const batch = adminDb.batch();
     
     while(tripsToMatch.length > 1) {
         const currentTrip = tripsToMatch.shift();
@@ -53,7 +52,7 @@ export async function GET(request: Request) {
             matchesFound++;
             
             // A. Create a new Match document with denormalized data
-            const matchRef = doc(collection(adminDb, 'matches'));
+            const matchRef = adminDb.collection('matches').doc();
             const newMatch: Match = {
                 id: matchRef.id,
                 participantIds: [currentTrip.userId, bestMatch.userId],
@@ -82,8 +81,8 @@ export async function GET(request: Request) {
             batch.set(matchRef, newMatch);
 
             // B. Update both trip documents to link to the new Match document
-            const currentTripRef = doc(adminDb, 'tripRequests', currentTrip.id);
-            const matchedTripRef = doc(adminDb, 'tripRequests', bestMatch.id);
+            const currentTripRef = adminDb.collection('tripRequests').doc(currentTrip.id);
+            const matchedTripRef = adminDb.collection('tripRequests').doc(bestMatch.id);
             batch.update(currentTripRef, { status: 'matched', matchId: matchRef.id });
             batch.update(matchedTripRef, { status: 'matched', matchId: matchRef.id });
 
@@ -116,7 +115,7 @@ export async function GET(request: Request) {
 
 
     // --- 2. Send "no match" warnings ---
-    const warningBatch = writeBatch(adminDb);
+    const warningBatch = adminDb.batch();
     const now = new Date();
     allPendingTrips.forEach(async (trip) => {
         // Only process trips that are still pending after the matching loop
@@ -133,7 +132,7 @@ export async function GET(request: Request) {
                 link: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`
             });
             notificationsSent++;
-            const tripRef = doc(adminDb, 'tripRequests', trip.id);
+            const tripRef = adminDb.collection('tripRequests').doc(trip.id);
             warningBatch.update(tripRef, { noMatchWarningSent: true });
         }
     });
@@ -143,9 +142,9 @@ export async function GET(request: Request) {
 
 
     // --- 3. Clean up old, completed trips ---
-    const cleanupBatch = writeBatch(adminDb);
-    const completedTripsQuery = query(collection(adminDb, 'tripRequests'), where('status', '==', 'completed'));
-    const completedTripsSnapshot = await getDocs(completedTripsQuery);
+    const cleanupBatch = adminDb.batch();
+    const completedTripsQuery = adminDb.collection('tripRequests').where('status', '==', 'completed');
+    const completedTripsSnapshot = await completedTripsQuery.get();
 
     completedTripsSnapshot.forEach(doc => {
         const trip = doc.data() as TripRequest;

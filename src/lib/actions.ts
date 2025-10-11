@@ -8,8 +8,8 @@ import { redirect } from 'next/navigation';
 import { getUserProfile, saveTripRequest, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
 import { isValid, parseISO, format, isBefore, addHours } from 'date-fns';
 import { cookies } from 'next/headers';
-import { getAdminDb } from './firebase-admin';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { adminDb } from './firebase-admin';
+import { getServerUser } from './server-auth';
 
 
 const TripDetailsSchema = z.object({
@@ -58,8 +58,9 @@ const combineFlightTimeParts = (hour: string, minute: string, period: 'AM' | 'PM
 
 // --- ACTION: SUBMIT TRIP DETAILS (Deferred Matching) ---
 export async function submitTripDetailsAction(
+  prevState: TripDetailsFormState,
   data: z.infer<typeof TripDetailsSchema>
-): Promise<TripDetailsFormState | void> {
+): Promise<TripDetailsFormState> {
     // Schema is already validated by react-hook-form on the client
     const { userId, flightCode, flightDate, flightHour, flightMinute, flightPeriod, departingAirport, numberOfCarryons, numberOfCheckedBags, university, preferredMatchGender, campusArea } = data;
 
@@ -132,14 +133,21 @@ export async function submitTripDetailsAction(
 
         await saveTripRequest(userTripRequest);
         
-    } catch (error) {
-        console.error("Error in submitTripDetailsAction:", error);
+    } catch (error: any) {
+        console.error("Error in submitTripDetailsAction:", {
+          message: error.message,
+          name: error.name,
+          code: error.code,
+          stack: error.stack,
+          full: error
+        });
         return {
-            success: false,
-            message: "An unexpected error occurred. Please try again.",
-            errors: { _form: ["An internal error prevented the trip from being saved."] },
+          success: false,
+          message: "An unexpected error occurred. Please try again.",
+          errors: { _form: ["An internal error prevented the trip from being saved."] },
         };
-    }
+      }
+      
 
     // Redirect to a confirmation page immediately.
     // The matching will be handled by the background cron job.
@@ -226,55 +234,58 @@ export async function updateUserProfileAction(
 }
 
 
-export async function cancelTripAction(tripId: string): Promise<{ success: boolean; message: string; }> {
-    const user = await getCurrentUser();
+export async function cancelTripAction(tripId: string): Promise<{ success: boolean; message: string }> {
+    const user = await getServerUser();
     if (!user) {
-        return { success: false, message: "You must be logged in." };
+      return { success: false, message: "You must be logged in." };
     }
-
-    const trip = await getTripById(tripId);
-    if (!trip) {
-        return { success: false, message: "Trip not found." };
+  
+    const tripRef = adminDb.collection('tripRequests').doc(tripId);
+    const tripSnap = await tripRef.get();
+  
+    if (!tripSnap.exists) {
+      return { success: false, message: "Trip not found." };
     }
-    if (trip.userId !== user.id) {
-        return { success: false, message: "You are not authorized to cancel this trip." };
+  
+    const tripData = tripSnap.data();
+    if (tripData.userId !== user.uid) {
+      return { success: false, message: "You are not authorized to cancel this trip." };
     }
-
+  
     try {
-        const adminDb = getAdminDb();
-        // If the trip was matched, we need to handle the other user as well.
-        if (trip.status === 'matched' && trip.matchId) {
-            const matchRef = doc(adminDb, 'matches', trip.matchId);
-            const matchDoc = await getDoc(matchRef);
-
-            if (matchDoc.exists()) {
-                const matchData = matchDoc.data();
-                const otherUserId = matchData.participantIds.find((id: string) => id !== user.id);
-
-                if (otherUserId) {
-                    const otherTripId = matchData.tripRequestIds.find((id: string) => id !== tripId);
-                    if (otherTripId) {
-                         const otherTripRef = doc(adminDb, 'tripRequests', otherTripId);
-                         // Set other user's trip back to pending and alert them
-                         await updateDoc(otherTripRef, { status: 'pending', matchId: null, cancellationAlert: true });
-                    }
-                }
-                 // Update the match status to cancelled
-                await updateDoc(matchRef, { status: 'cancelled' });
-            }
+      if (tripData.status === 'matched' && tripData.matchId) {
+        const matchRef = adminDb.collection('matches').doc(tripData.matchId);
+        const matchSnap = await matchRef.get();
+  
+        if (matchSnap.exists) {
+          const matchData = matchSnap.data();
+          const otherUserId = matchData.participantIds.find((id: string) => id !== user.uid);
+          const otherTripId = matchData.tripRequestIds.find((id: string) => id !== tripId);
+  
+          if (otherTripId) {
+            await adminDb.collection('tripRequests').doc(otherTripId).update({
+              status: 'pending',
+              matchId: null,
+              cancellationAlert: true,
+            });
+          }
+  
+          await matchRef.update({ status: 'cancelled' });
         }
-        
-        // Delete the current user's trip request
-        await adminDb.collection('tripRequests').doc(tripId).delete();
-
-        revalidatePath('/dashboard');
-        revalidatePath('/planned-trips');
-        return { success: true, message: "Your trip has been cancelled." };
+      }
+  
+      await tripRef.delete();
+  
+      revalidatePath('/dashboard');
+      revalidatePath('/planned-trips');
+  
+      return { success: true, message: "Your trip has been cancelled." };
     } catch (error) {
-        console.error("Error cancelling trip:", error);
-        return { success: false, message: "Failed to cancel the trip." };
+      console.error("Error cancelling trip:", error);
+      return { success: false, message: "Failed to cancel the trip." };
     }
-}
+  }
+  
 
 const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required."),
