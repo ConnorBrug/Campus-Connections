@@ -24,15 +24,13 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    ...( {
-      allowedDevOrigins: [
-        "https://3000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
-        "https://9000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
-        "https://3000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-        "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-        "https://3001-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev", // 👈 new
-      ],
-    } as any),
+    allowedDevOrigins: [
+      "https://3000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
+      "https://9000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
+      "https://3000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
+      "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
+      "https://3001-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev", // 👈 new
+    ],
   },
   
 };
