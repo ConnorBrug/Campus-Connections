@@ -1,3 +1,4 @@
+
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -24,12 +25,8 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    allowedDevOrigins: [
-      "https://3000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
-      "https://9000-firebase-studio-1749349277265.cluster-hf4yr35cmnbd4vhbxvfvc6cp5q.cloudworkstations.dev",
-      "https://3000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-      "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-    ],
+    // allowedDevOrigins is not a valid property here and was causing the build to fail.
+    // It has been removed to fix the server startup issue.
   },
   
 };
