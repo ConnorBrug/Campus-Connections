@@ -26,6 +26,7 @@ import { submitTripDetailsAction, type TripDetailsFormState } from "@/lib/action
 import { useEffect, useState, useMemo, useActionState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { startTransition } from "react";
 
 
 const massachusettsAirports = [
@@ -153,8 +154,11 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
   }, [state, form, toast]);
 
   const onSubmit = (data: TripDetailsFormValues) => {
-    dispatch(data);
+    startTransition(() => {
+      dispatch(data);
+    });
   };
+  
 
 
   return (

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdminAuth } from '@/lib/firebase-admin';
+import { adminAuth } from "@/lib/firebase-admin";
 import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
@@ -10,14 +10,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing ID token' }, { status: 400 });
     }
 
-    const auth = getAdminAuth();
+    const auth = adminAuth; // ✅ use adminAuth directly
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
 
     // Create a secure session cookie from the ID token
     const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
 
-    // Set the cookie in the user's browser
-    cookies().set('__session', sessionCookie, {
+    // ✅ Await cookies() before calling .set()
+    const cookieStore = await cookies();
+    cookieStore.set('__session', sessionCookie, {
       maxAge: expiresIn / 1000,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -34,11 +35,14 @@ export async function POST(req: Request) {
 
 export async function DELETE() {
   try {
-    // Clear the cookie on logout
-    cookies().set('__session', '', { maxAge: 0, path: '/' });
+    // ✅ Await cookies() before calling .set()
+    const cookieStore = await cookies();
+    cookieStore.set('__session', '', { maxAge: 0, path: '/' });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error clearing session cookie:', error);
     return NextResponse.json({ error: 'Failed to clear session' }, { status: 500 });
   }
 }
+

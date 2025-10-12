@@ -4,7 +4,7 @@
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
 import { TripStatusTimeline } from '@/components/dashboard/TripStatusTimeline';
-import { cancelTripAction } from '@/lib/actions';
+import { cancelTripAction, getActiveTripForUser } from '@/lib/actions';
 import { useEffect, useState, startTransition } from 'react';
 import type { UserProfile, TripRequest } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useApp } from '@/app/(app)/layout';
-import { getActiveTripForUser } from '@/lib/auth';
+
 
 export default function DashboardPage() {
   const router = useRouter();

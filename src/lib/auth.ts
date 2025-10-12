@@ -42,6 +42,7 @@ import type { UserProfile, TripRequest, FlaggedEntry, Match } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { adminDb } from './firebase-admin';
 
 export interface SignupData {
   name: string;
@@ -261,11 +262,11 @@ export async function getMatchById(matchId: string): Promise<Match | null> {
 }
 
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
+    'use client';
     const tripsRef = collection(db, 'tripRequests');
-    
-    const q = query(
-        tripsRef, 
+    const q = query(tripsRef, 
         where("userId", "==", userId), 
+        where("status", "in", ["pending", "matched"]),
         limit(1)
     );
 
@@ -276,17 +277,11 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     
     const latestTrip = querySnapshot.docs[0].data() as TripRequest;
 
-    // A trip is only "active" if it is pending or matched, and not yet completed.
-    if (latestTrip.status === 'pending' || latestTrip.status === 'matched') {
-         if (isPast(addHours(parseISO(latestTrip.flightDateTime), 4))) {
-            // If the trip is more than 4 hours in the past, consider it implicitly completed
-            // This is a client-side safeguard. The cron job handles official completion.
-            return null;
-        }
-        return latestTrip;
+    if (isPast(addHours(parseISO(latestTrip.flightDateTime), 4))) {
+        return null;
     }
     
-    return null;
+    return latestTrip;
 }
 
 export async function getPendingTripsForMatching(currentTripId: string, university: string): Promise<TripRequest[]> {

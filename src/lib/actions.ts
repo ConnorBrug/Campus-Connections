@@ -5,8 +5,8 @@ import { z } from 'zod';
 import type { UserProfile, TripRequest } from './types';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getUserProfile, saveTripRequest, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto, getActiveTripForUser } from './auth';
-import { isValid, parse, format, isBefore, addHours } from 'date-fns';
+import { getUserProfile, saveTripRequest, getTripById, updateUserProfile, changePassword, deleteCurrentUserAccount, uploadProfilePhoto } from './auth';
+import { isValid, parse, format, isBefore, addHours, isPast, parseISO } from 'date-fns';
 import { cookies } from 'next/headers';
 import { adminDb } from './firebase-admin';
 import { getServerUser } from './server-auth';
@@ -62,6 +62,9 @@ export async function submitTripDetailsAction(
   prevState: TripDetailsFormState,
   data: TripDetailsFormValues
 ): Promise<TripDetailsFormState> {
+  console.log("🟢 submitTripDetailsAction called with data:", data);
+
+  try {
     const validatedFields = TripDetailsSchema.safeParse(data);
 
     if (!validatedFields.success) {
@@ -71,99 +74,128 @@ export async function submitTripDetailsAction(
         errors: validatedFields.error.flatten().fieldErrors,
       };
     }
-    
+
     const { userId, flightCode, flightDate, flightHour, flightMinute, flightPeriod, departingAirport, numberOfCarryons, numberOfCheckedBags, university, preferredMatchGender, campusArea } = validatedFields.data;
 
     const [currentUser, existingTrip] = await Promise.all([
       getUserProfile(userId),
-      getActiveTripForUser(userId)
+      getActiveTripForUser(userId),
     ]);
-    
+
     if (!currentUser) {
-        return {
-          success: false,
-          message: "You must be logged in to submit a trip.",
-          errors: { _form: ["User profile could not be loaded."] }
-        };
+      return {
+        success: false,
+        message: "You must be logged in to submit a trip.",
+        errors: { _form: ["User profile could not be loaded."] },
+      };
     }
-    
+
     if (currentUser.isBanned) {
-        return {
-            success: false,
-            message: "Your account is suspended from creating new trips.",
-            errors: { _form: ["Account suspended."] }
-        }
+      return {
+        success: false,
+        message: "Your account is suspended from creating new trips.",
+        errors: { _form: ["Account suspended."] },
+      };
     }
 
     if (existingTrip) {
-        return {
-            success: false,
-            message: "You already have a pending trip. Please cancel it before creating a new one.",
-            errors: { _form: ["An active trip already exists."] },
-        };
+      return {
+        success: false,
+        message: "You already have a pending trip.",
+        errors: { _form: ["An active trip already exists."] },
+      };
     }
-    
+
     const flightTime = combineFlightTimeParts(flightHour, flightMinute, flightPeriod);
-    const flightDateTime = parse(`${format(flightDate, 'yyyy-MM-dd')}T${flightTime}:00`, "yyyy-MM-dd'T'HH:mm:ss", new Date());
+    const flightDateTime = parse(
+      `${format(flightDate, "yyyy-MM-dd")}T${flightTime}:00`,
+      "yyyy-MM-dd'T'HH:mm:ss",
+      new Date()
+    );
 
     if (!isValid(flightDateTime)) {
-        return { success: false, message: "Invalid date or time.", errors: {_form: ["The provided date/time is invalid."]}};
+      return {
+        success: false,
+        message: "Invalid date or time.",
+        errors: { _form: ["The provided date/time is invalid."] },
+      };
     }
-    
+
     const threeHoursFromNow = addHours(new Date(), 3);
     if (isBefore(flightDateTime, threeHoursFromNow)) {
-        return {
-            success: false,
-            message: "Trip must be scheduled at least 3 hours in advance.",
-            errors: { _form: ["Please select a flight time at least 3 hours from now."] }
-        };
+      return {
+        success: false,
+        message: "Trip must be scheduled at least 3 hours in advance.",
+        errors: { _form: ["Please select a flight time at least 3 hours from now."] },
+      };
     }
 
+    // --- Save trip ---
+    const userTripRequest: Omit<TripRequest, "id" | "createdAt"> = {
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userPhotoUrl: currentUser.photoUrl,
+      flightCode,
+      flightDate: format(flightDate, "yyyy-MM-dd"),
+      flightTime,
+      flightDateTime: flightDateTime.toISOString(),
+      departingAirport,
+      numberOfCarryons,
+      numberOfCheckedBags,
+      university,
+      campusArea,
+      status: "pending",
+      userPreferences: preferredMatchGender,
+      userGender: currentUser.gender,
+      noMatchWarningSent: false,
+      cancellationAlert: false,
+    };
 
-    try {
-        let userTripRequest: Omit<TripRequest, 'id' | 'createdAt'> = {
-            userId: currentUser.id,
-            userName: currentUser.name,
-            userPhotoUrl: currentUser.photoUrl,
-            flightCode,
-            flightDate: format(flightDate, 'yyyy-MM-dd'),
-            flightTime,
-            flightDateTime: flightDateTime.toISOString(),
-            departingAirport,
-            numberOfCarryons,
-            numberOfCheckedBags,
-            university,
-            campusArea,
-            status: 'pending',
-            userPreferences: preferredMatchGender,
-            userGender: currentUser.gender,
-            noMatchWarningSent: false,
-            cancellationAlert: false,
-        };
+    await saveTripRequest(userTripRequest);
+    console.log("✅ Trip saved successfully!");
 
-        await saveTripRequest(userTripRequest);
-        
-    } catch (error: any) {
-        console.error("Error in submitTripDetailsAction:", {
-          message: error.message,
-          name: error.name,
-          code: error.code,
-          stack: error.stack,
-          full: error
-        });
-        return {
-          success: false,
-          message: "An unexpected error occurred. Please try again.",
-          errors: { _form: ["An internal error prevented the trip from being saved."] },
-        };
-      }
+    revalidatePath("/dashboard");
+    redirect(`/trip-submitted`);
+
+  } catch (error: any) {
+    console.error("🔴 submitTripDetailsAction unexpected error:", error);
+
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+      errors: { _form: ["An internal error prevented the trip from being saved."] },
+    };
+  }
+}
+
+export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
+    const tripsRef = adminDb.collection('tripRequests');
+    
+    const q = tripsRef
+        .where("userId", "==", userId)
+        .limit(1);
+
+    const querySnapshot = await q.get();
+    if (querySnapshot.empty) {
+        return null;
+    }
+    
+    const latestTrip = querySnapshot.docs[0].data() as TripRequest;
+
+    // A trip is only "active" if it is pending or matched, and not yet completed.
+    if (latestTrip.status === 'pending' || latestTrip.status === 'matched') {
+         if (isPast(addHours(parseISO(latestTrip.flightDateTime), 4))) {
+            // If the trip is more than 4 hours in the past, consider it implicitly completed
+            // This is a client-side safeguard. The cron job handles official completion.
+            return null;
+        }
+        return latestTrip;
+    }
+    
+    return null;
+}
       
 
-    // Redirect to a confirmation page immediately.
-    // The matching will be handled by the background cron job.
-    revalidatePath('/dashboard');
-    redirect(`/trip-submitted`);
-}
 
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -202,6 +234,7 @@ export async function updateUserProfileAction(
   prevState: ProfileUpdateFormState,
   formData: FormData
 ): Promise<ProfileUpdateFormState> {
+  console.log("Received form data:", Object.fromEntries(formData.entries()));
     const validatedFields = ProfileUpdateSchemaServer.safeParse({
         name: formData.get('name'),
         university: formData.get('university'),
@@ -244,57 +277,66 @@ export async function updateUserProfileAction(
 }
 
 
-export async function cancelTripAction(tripId: string): Promise<{ success: boolean; message: string }> {
-    const user = await getServerUser();
-    if (!user) {
-      return { success: false, message: "You must be logged in." };
-    }
-  
-    const tripRef = adminDb.collection('tripRequests').doc(tripId);
-    const tripSnap = await tripRef.get();
-  
-    if (!tripSnap.exists) {
-      return { success: false, message: "Trip not found." };
-    }
-  
-    const tripData = tripSnap.data();
-    if (tripData.userId !== user.uid) {
-      return { success: false, message: "You are not authorized to cancel this trip." };
-    }
-  
-    try {
-      if (tripData.status === 'matched' && tripData.matchId) {
-        const matchRef = adminDb.collection('matches').doc(tripData.matchId);
-        const matchSnap = await matchRef.get();
-  
-        if (matchSnap.exists) {
-          const matchData = matchSnap.data();
-          const otherUserId = matchData.participantIds.find((id: string) => id !== user.uid);
-          const otherTripId = matchData.tripRequestIds.find((id: string) => id !== tripId);
-  
+export async function cancelTripAction(
+  tripId: string
+): Promise<{ success: boolean; message: string }> {
+  const user = await getServerUser();
+  if (!user) {
+    return { success: false, message: "You must be logged in." };
+  }
+
+  const tripRef = adminDb.collection("tripRequests").doc(tripId);
+  const tripSnap = await tripRef.get();
+
+  if (!tripSnap.exists) {
+    return { success: false, message: "Trip not found." };
+  }
+
+  const tripData = tripSnap.data();
+  if (!tripData) {
+    return { success: false, message: "Trip data could not be loaded." };
+  }
+
+  if (tripData.userId !== user.uid) {
+    return { success: false, message: "You are not authorized to cancel this trip." };
+  }
+
+  try {
+    if (tripData.status === "matched" && tripData.matchId) {
+      const matchRef = adminDb.collection("matches").doc(tripData.matchId);
+      const matchSnap = await matchRef.get();
+
+      if (matchSnap.exists) {
+        const matchData = matchSnap.data();
+        if (matchData) {
+          const otherUserId = matchData.participantIds?.find((id: string) => id !== user.uid);
+          const otherTripId = matchData.tripRequestIds?.find((id: string) => id !== tripId);
+
           if (otherTripId) {
-            await adminDb.collection('tripRequests').doc(otherTripId).update({
-              status: 'pending',
+            await adminDb.collection("tripRequests").doc(otherTripId).update({
+              status: "pending",
               matchId: null,
               cancellationAlert: true,
             });
           }
-  
-          await matchRef.update({ status: 'cancelled' });
+
+          await matchRef.update({ status: "cancelled" });
         }
       }
-  
-      await tripRef.delete();
-  
-      revalidatePath('/dashboard');
-      revalidatePath('/planned-trips');
-  
-      return { success: true, message: "Your trip has been cancelled." };
-    } catch (error) {
-      console.error("Error cancelling trip:", error);
-      return { success: false, message: "Failed to cancel the trip." };
     }
+
+    await tripRef.delete();
+
+    revalidatePath("/dashboard");
+    revalidatePath("/planned-trips");
+
+    return { success: true, message: "Your trip has been cancelled." };
+  } catch (error) {
+    console.error("Error cancelling trip:", error);
+    return { success: false, message: "Failed to cancel the trip." };
   }
+}
+
   
 
 const ChangePasswordSchema = z.object({

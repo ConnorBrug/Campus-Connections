@@ -1,12 +1,13 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { getAdminAuth } from './firebase-admin';
+import { adminAuth } from './firebase-admin';
 
 export async function getServerUser() {
   try {
-    const auth = getAdminAuth();
-    const sessionCookie = cookies().get('__session')?.value;
+    const auth = adminAuth; // ✅ use adminAuth directly
+    const cookieStore = await cookies(); // ✅ await cookies()
+    const sessionCookie = cookieStore.get('__session')?.value;
 
     if (!sessionCookie) {
       return null;
@@ -19,4 +20,3 @@ export async function getServerUser() {
     return null;
   }
 }
-

@@ -55,7 +55,7 @@ export default function AppLayout({
         setIsLoading(false);
     }
     loadUser();
-  }, [fetchUserProfile, pathname]);
+  }, [fetchUserProfile]);
 
 
   if (isLoading) {
