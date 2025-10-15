@@ -25,8 +25,7 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    // allowedDevOrigins is not a valid property here and was causing the build to fail.
-    // It has been removed to fix the server startup issue.
+    serverComponentsExternalPackages: ["firebase-admin"],
   },
   
 };

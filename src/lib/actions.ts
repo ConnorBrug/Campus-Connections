@@ -169,31 +169,54 @@ export async function submitTripDetailsAction(
 }
 
 export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
-    const tripsRef = adminDb.collection('tripRequests');
-    
+  try {
+    const tripsRef = adminDb.collection("tripRequests");
+
+    // ✅ Explicitly limit query to active trips only
     const q = tripsRef
-        .where("userId", "==", userId)
-        .limit(1);
+      .where("userId", "==", userId)
+      .where("status", "in", ["pending", "matched"])
+      .limit(1);
 
     const querySnapshot = await q.get();
-    if (querySnapshot.empty) {
-        return null;
-    }
-    
-    const latestTrip = querySnapshot.docs[0].data() as TripRequest;
 
-    // A trip is only "active" if it is pending or matched, and not yet completed.
-    if (latestTrip.status === 'pending' || latestTrip.status === 'matched') {
-         if (isPast(addHours(parseISO(latestTrip.flightDateTime), 4))) {
-            // If the trip is more than 4 hours in the past, consider it implicitly completed
-            // This is a client-side safeguard. The cron job handles official completion.
-            return null;
-        }
-        return latestTrip;
+    // ✅ No trip found — not an error
+    if (querySnapshot.empty) {
+      console.log(`No active trip found for user ${userId}`);
+      return null;
     }
-    
-    return null;
+
+    const trip = querySnapshot.docs[0].data() as TripRequest;
+
+    // ✅ If flight time has already passed by >4h, consider trip inactive
+    if (trip.flightDateTime) {
+      const flightDateTime = parseISO(trip.flightDateTime);
+      if (isPast(addHours(flightDateTime, 4))) {
+        console.log(`Trip for ${userId} is in the past — skipping.`);
+        return null;
+      }
+    }
+
+    return trip;
+  } catch (error: any) {
+    console.error("Error in getActiveTripForUser:", error);
+
+    // ✅ Handle Firestore plugin errors gracefully
+    if (
+      error.code === 5 || // NOT_FOUND
+      error.message?.includes("NOT_FOUND") ||
+      error.message?.includes("Could not refresh access token")
+    ) {
+      console.warn(`Firestore returned NOT_FOUND for user ${userId}`);
+      return null;
+    }
+
+    throw new Error(
+      error.message || "Failed to fetch active trip. Please try again later."
+    );
+  }
 }
+
       
 
 

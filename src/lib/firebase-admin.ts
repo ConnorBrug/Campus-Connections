@@ -6,17 +6,29 @@ import { getStorage } from "firebase-admin/storage";
 
 let adminApp: App;
 
-if (getApps().length === 0) {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    adminApp = initializeApp({
-      credential: cert(serviceAccount),
-    });
-  } else {
-    // This is a fallback for local development or environments
-    // where the full JSON isn't set. It might not work for all services.
-    console.warn("FIREBASE_SERVICE_ACCOUNT_JSON not set. Using default application credentials. This may not work for all services.");
-    adminApp = initializeApp();
+if (!getApps().length) {
+  try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      // ✅ Use environment variable for production or local JSON string
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      adminApp = initializeApp({
+        credential: cert(serviceAccount),
+      });
+      console.log("✅ Firebase Admin initialized with service account JSON");
+    } else {
+      // ✅ Try application default credentials (e.g., gcloud or emulator)
+      console.warn(
+        "⚠️ FIREBASE_SERVICE_ACCOUNT_JSON not found — using application default credentials."
+      );
+      adminApp = initializeApp({
+        credential: undefined, // will use GOOGLE_APPLICATION_CREDENTIALS or emulator
+      });
+    }
+  } catch (error) {
+    console.error("🔥 Firebase Admin initialization failed:", error);
+    throw new Error(
+      "Failed to initialize Firebase Admin SDK — check credentials or environment variables."
+    );
   }
 } else {
   adminApp = getApp();
