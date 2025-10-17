@@ -13,14 +13,6 @@ function AuthHeader() {
             <CarFront className="h-8 w-8 text-primary-foreground" />
             <span className="font-headline">Connections</span>
           </Link>
-          <nav className="flex items-center gap-2">
-             <Button variant="ghost" size="sm" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-white">
-              <Link href="/signup">Sign Up</Link>
-            </Button>
-            <Button variant="ghost" size="sm" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-white">
-              <Link href="/login">Login</Link>
-            </Button>
-          </nav>
         </div>
       </header>
   )
