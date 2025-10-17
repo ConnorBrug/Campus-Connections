@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -5,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { getCurrentUser, uploadProfilePhoto, changePassword } from '@/lib/auth';
+import { uploadProfilePhoto, changePassword } from '@/lib/auth';
 import type { UserProfile } from '@/lib/types';
 
 import { Button } from '@/components/ui/button';
@@ -27,7 +28,6 @@ const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const ProfileFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
-  university: z.enum(['Boston College', 'Vanderbilt']),
   gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   campusArea: z.string().optional(),
   photo: z
@@ -84,7 +84,6 @@ export default function ProfilePage() {
     resolver: zodResolver(ProfileFormSchema),
     defaultValues: {
       name: '',
-      university: 'Vanderbilt',
       gender: 'Prefer not to say',
       campusArea: '',
       photo: undefined,
@@ -112,7 +111,6 @@ export default function ProfilePage() {
     if (!user) return;
     profileForm.reset({
       name: user.name,
-      university: (user.university as 'Boston College' | 'Vanderbilt') || 'Vanderbilt',
       gender: (user.gender as ProfileFormValues['gender']) ?? 'Prefer not to say',
       campusArea: user.campusArea || '',
       photo: undefined,
@@ -133,22 +131,20 @@ export default function ProfilePage() {
   const onSubmitProfile = async (vals: ProfileFormValues) => {
     if (!user) return;
     try {
-      // 1) If a file was chosen, upload via client SDK to Storage and get URL
       let photoUrl: string | undefined = undefined;
       if (vals.photo) {
         photoUrl = await uploadProfilePhoto(user.id, vals.photo);
       }
 
-      // 2) Patch profile via authenticated API (uses session cookie)
       const res = await fetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
           name: vals.name.trim(),
-          university: vals.university,
+          university: user.university, // Keep original university
           gender: vals.gender,
-          campusArea: vals.university === 'Boston College' ? (vals.campusArea ?? '') : '',
+          campusArea: user.university === 'Boston College' ? (vals.campusArea ?? '') : '',
           ...(photoUrl ? { photoUrl } : {}),
         }),
       });
@@ -191,7 +187,6 @@ export default function ProfilePage() {
   };
 
   const getInitials = (name?: string) => (name ? name.split(' ').map((n) => n[0]).join('').toUpperCase() : 'U');
-  const watchedUniversity = profileForm.watch('university');
 
   if (isLoading || !user) {
     return (
@@ -273,30 +268,15 @@ export default function ProfilePage() {
                           </FormItem>
                         )}
                       />
+                      
+                       <div className="space-y-2">
+                          <Label>University</Label>
+                          <Input value={user.university} disabled className="bg-muted/50"/>
+                          <FormDescription>Your university cannot be changed after signup.</FormDescription>
+                      </div>
 
-                      <FormField
-                        control={profileForm.control}
-                        name="university"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>University</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger id="university">
-                                  <SelectValue placeholder="Select University" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Boston College">Boston College</SelectItem>
-                                <SelectItem value="Vanderbilt">Vanderbilt</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
 
-                      {watchedUniversity === 'Boston College' && (
+                      {user.university === 'Boston College' && (
                         <FormField
                           control={profileForm.control}
                           name="campusArea"
@@ -457,3 +437,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    

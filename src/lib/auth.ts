@@ -35,9 +35,19 @@ export interface SignupData {
 }
 
 export async function signup(userData: SignupData): Promise<FirebaseUser> {
-  const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.passwordInput);
+  // Ensure the browser keeps Firebase auth state
+  await setPersistence(auth, browserLocalPersistence);
+
+  const userCredential = await createUserWithEmailAndPassword(
+    auth,
+    userData.email,
+    userData.passwordInput
+  );
+
   try {
     const user = userCredential.user;
+
+    // Create profile in Firestore
     const userDocRef = doc(db, "users", user.uid);
     await runTransaction(db, async (tx) => {
       const profile: UserProfile = {
@@ -54,8 +64,28 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
       };
       tx.set(userDocRef, profile);
     });
+
+    // 🔐 Create the Next.js server session cookie right after signup
+    const idToken = await user.getIdToken(true);
+    const res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin", // or "include" — either is fine here
+      body: JSON.stringify({ idToken }),
+    });
+
+    if (!res.ok) {
+      // Best-effort rollback so user isn't half-registered
+      try { await deleteUser(user); } catch {}
+      try { await signOut(auth); } catch {}
+      let msg = "Failed to create server session. Please log in.";
+      try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+      throw new Error(msg);
+    }
+
     return user;
   } catch (e) {
+    // Roll back if Firestore or cookie step failed
     try { await deleteUser(userCredential.user); } catch {}
     throw e;
   }
@@ -70,7 +100,7 @@ export async function login(email: string, passwordInput: string): Promise<UserP
   const res = await fetch('/api/session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',            // <-- IMPORTANT
+    credentials: 'include',
     body: JSON.stringify({ idToken }),
   });
   if (!res.ok) {
@@ -147,7 +177,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
   await updatePassword(user, newPassword);
 }
 
-// ----- Trips (same as you had; trimmed for brevity but functional) -----
+// ----- Trips -----
 export async function saveTripRequest(tripData: Omit<TripRequest, "id" | "createdAt">): Promise<TripRequest> {
   const docRef = doc(collection(db, "tripRequests"));
   const newTrip: TripRequest = { ...tripData, id: docRef.id, createdAt: serverTimestamp() as any };
