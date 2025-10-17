@@ -10,14 +10,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing ID token' }, { status: 400 });
     }
 
-    const auth = adminAuth; // ✅ use adminAuth directly
+    const auth = adminAuth;
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
 
     // Create a secure session cookie from the ID token
     const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
 
-    // ✅ Await cookies() before calling .set()
-    const cookieStore = await cookies();
+    const cookieStore = cookies();
     cookieStore.set('__session', sessionCookie, {
       maxAge: expiresIn / 1000,
       httpOnly: true,
@@ -35,8 +34,7 @@ export async function POST(req: Request) {
 
 export async function DELETE() {
   try {
-    // ✅ Await cookies() before calling .set()
-    const cookieStore = await cookies();
+    const cookieStore = cookies();
     cookieStore.set('__session', '', { maxAge: 0, path: '/' });
 
     return NextResponse.json({ success: true });
@@ -46,3 +44,4 @@ export async function DELETE() {
   }
 }
 
+    

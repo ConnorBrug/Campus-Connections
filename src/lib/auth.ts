@@ -92,13 +92,31 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
 
 export async function login(email: string, passwordInput: string): Promise<UserProfile> {
   'use client';
-  // Default to local persistence to keep the user signed in across browser sessions.
+  
   await setPersistence(auth, browserLocalPersistence);
   const userCredential = await signInWithEmailAndPassword(auth, email, passwordInput);
   const user = userCredential.user;
+
+  // After successful login, create a server-side session
+  const idToken = await user.getIdToken();
+  const response = await fetch('/api/session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ idToken }),
+  });
+
+  if (!response.ok) {
+    // If session creation fails, log the user out to prevent an inconsistent state
+    await signOut(auth);
+    throw new Error('Failed to create server session. Please try again.');
+  }
+
   const userProfile = await getUserProfile(user.uid);
   if (!userProfile) {
-    throw new Error("User profile not found.");
+    await signOut(auth);
+    throw new Error("User profile not found after login.");
   }
   return userProfile;
 }
@@ -110,7 +128,11 @@ export async function logout(): Promise<void> {
 
 export async function logoutAndRedirectClientSide(): Promise<void> {
   'use client';
-  await logout();
+  // Clear the server-side session cookie
+  await fetch('/api/session', { method: 'DELETE' });
+  // Sign out from the client-side Firebase SDK
+  await signOut(auth);
+  // Redirect to the login page
   if (typeof window !== 'undefined') {
     window.location.href = '/login?logged_out=true';
   }
@@ -488,3 +510,5 @@ export async function flagUser(flaggerId: string, flaggedUserId: string, reason:
 
     await batch.commit();
 }
+
+    
