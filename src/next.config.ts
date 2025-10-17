@@ -1,11 +1,4 @@
-// next.config.ts
 import type { NextConfig } from "next";
-
-const allowedFromEnv =
-  (process.env.ALLOWED_DEV_ORIGINS || "")
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean);
 
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
@@ -18,11 +11,14 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // correct for Next 15
+  // Replaces deprecated experimental.serverComponentsExternalPackages
   serverExternalPackages: ["firebase-admin"],
 
-  // quiets the Studio cross-origin dev noise
-  allowedDevOrigins: allowedFromEnv,
+  // Dev-only: allow Firebase Studio preview origins (replace with your exact hosts if needed)
+  allowedDevOrigins: [
+    "https://6000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
+    "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
+  ],
 };
 
 export default nextConfig;
