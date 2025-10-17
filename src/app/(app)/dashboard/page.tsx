@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState, startTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -89,8 +91,15 @@ export default function DashboardPage() {
     );
   }
 
+  const hasTrip = Boolean(activeTrip);
+
   return (
-    <div className="container mx-auto py-8 px-4 md:px-6">
+    <div
+      className={cn(
+        'mx-auto py-8 px-4 md:px-6',
+        hasTrip ? 'container max-w-7xl' : 'container max-w-3xl'
+      )}
+    >
       <h1 className="text-4xl font-bold mb-8 text-center font-headline">Your Airport Ride Share</h1>
 
       {activeTrip?.cancellationAlert && (
@@ -113,18 +122,33 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
-          <TripDetailsForm
-            userId={currentUser.id}
-            userUniversity={currentUser.university}
-            isTripPending={!!activeTrip}
-          />
-          <CostEstimator />
+      <div className={cn('grid gap-8', hasTrip ? 'lg:grid-cols-12' : '')}>
+        {/* Left/Main column */}
+        <div className={cn(hasTrip ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12')}>
+          <div className={cn(hasTrip && 'grid')}>
+            <Card className={cn('w-full shadow-lg', hasTrip && 'h-full')}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                  {/* Icon is in the form itself; keep header clean */}
+                  Find Your Ride
+                </CardTitle>
+                <CardDescription>Enter your flight and bag details to find matches.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TripDetailsForm
+                  userId={currentUser.id}
+                  userUniversity={currentUser.university}
+                  isTripPending={!!activeTrip}
+                />
+                <CostEstimator />
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        <div className="lg:col-span-2">
-          {activeTrip && (
+        {/* Right/status column (only when a trip exists) */}
+        {hasTrip && (
+          <div className="lg:col-span-4 xl:col-span-3">
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-2xl">
@@ -132,17 +156,17 @@ export default function DashboardPage() {
                   Your Trip Status
                 </CardTitle>
                 <CardDescription>
-                  {activeTrip.status === 'pending' && "We're looking for a match. You'll be notified when one is found."}
-                  {activeTrip.status === 'matched' && "You're matched! Coordinate with your partner."}
-                  {activeTrip.status === 'completed' && 'This trip is complete.'}
+                  {activeTrip!.status === 'pending' && "We're looking for a match. You'll be notified when one is found."}
+                  {activeTrip!.status === 'matched' && "You're matched! Coordinate with your partner."}
+                  {activeTrip!.status === 'completed' && 'This trip is complete.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <TripStatusTimeline status={activeTrip.status} />
+                <TripStatusTimeline status={activeTrip!.status} />
 
-                {activeTrip.status === 'matched' && activeTrip.matchId && (
+                {activeTrip!.status === 'matched' && activeTrip!.matchId && (
                   <Button asChild className="w-full">
-                    <Link href={`/chat/${activeTrip.matchId}`}>
+                    <Link href={`/chat/${activeTrip!.matchId}`}>
                       <UserCheck className="mr-2 h-4 w-4" /> Go to Chat
                     </Link>
                   </Button>
@@ -159,8 +183,8 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
