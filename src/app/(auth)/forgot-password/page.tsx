@@ -21,9 +21,9 @@ export default function ForgotPasswordPage() {
         </CardHeader>
         <CardFooter className="flex flex-col items-center space-y-2 pt-6">
           <p className="text-sm text-muted-foreground">
-            Remember your password?{' '}
-            <Link href="/login" className="font-medium text-primary hover:underline">
-              Log in
+            Don't have an account?{' '}
+            <Link href="/signup" className="font-medium text-primary hover:underline">
+              Sign up here
             </Link>
           </p>
            <Button variant="link" asChild className="text-sm">
