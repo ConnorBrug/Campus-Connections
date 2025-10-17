@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
@@ -27,3 +28,5 @@ export async function POST() {
     return NextResponse.json({ message: 'Failed to delete account' }, { status: 500 });
   }
 }
+
+    

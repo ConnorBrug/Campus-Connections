@@ -217,88 +217,6 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
   }
 }
 
-      
-
-
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-
-const ProfileUpdateSchemaServer = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters."),
-  university: z.string().min(3, "University name is too short."),
-  gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
-  userId: z.string().min(1, "User ID is required."),
-  campusArea: z.string().optional(),
-  photo: z.instanceof(File)
-    .optional()
-    .refine((file) => !file || file.size <= MAX_FILE_SIZE, `Max file size is 5MB.`)
-    .refine(
-      (file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.type),
-      "Only .jpg, .png, and .webp formats are supported."
-    ),
-});
-
-export type ProfileUpdateFormState = {
-  message?: string;
-  errors?: {
-    name?: string[];
-    university?: string[];
-    gender?: string[];
-    campusArea?: string[];
-    photo?: string[];
-    _form?: string[];
-  };
-  user?: UserProfile;
-};
-
-
-export async function updateUserProfileAction(
-  prevState: ProfileUpdateFormState,
-  formData: FormData
-): Promise<ProfileUpdateFormState> {
-  console.log("Received form data:", Object.fromEntries(formData.entries()));
-    const validatedFields = ProfileUpdateSchemaServer.safeParse({
-        name: formData.get('name'),
-        university: formData.get('university'),
-        gender: formData.get('gender'),
-        userId: formData.get('userId'),
-        campusArea: formData.get('campusArea'),
-        photo: formData.get('photo'),
-    });
-
-    if (!validatedFields.success) {
-        return {
-        message: "Validation failed.",
-        errors: validatedFields.error.flatten().fieldErrors,
-        };
-    }
-
-    const { userId, name, university, gender, campusArea, photo } = validatedFields.data;
-    
-    try {
-        const dataToUpdate: Partial<UserProfile> = { name, university, gender };
-        if (campusArea) {
-            dataToUpdate.campusArea = campusArea;
-        }
-
-        if (photo && photo.size > 0) {
-            const photoUrl = await uploadProfilePhoto(userId, photo);
-            dataToUpdate.photoUrl = photoUrl;
-        }
-
-        const updatedUser = await updateUserProfile(userId, dataToUpdate);
-
-        revalidatePath('/profile');
-        revalidatePath('/dashboard');
-        
-        return { message: "Profile updated successfully!", user: updatedUser };
-    } catch (error: any) {
-        console.error("Profile update error:", error);
-        return { message: error.message || "An unexpected error occurred.", errors: { _form: [error.message] } };
-    }
-}
-
 
 export async function cancelTripAction(
   tripId: string
@@ -360,7 +278,7 @@ export async function cancelTripAction(
   }
 }
 
-  
+
 
 const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required."),
@@ -416,3 +334,5 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
         return { success: false, message: error.message || "An unexpected error occurred while deleting your account." };
     }
 }
+
+    

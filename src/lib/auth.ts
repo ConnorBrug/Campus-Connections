@@ -155,10 +155,23 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 
 // ----- Profile + password -----
 export async function uploadProfilePhoto(userId: string, file: File): Promise<string> {
-  const filePath = `profile-photos/${userId}/${file.name}`;
-  const storageRef = ref(storage, filePath);
-  await uploadBytes(storageRef, file);
-  return await getDownloadURL(storageRef);
+  // Unique, content-type aware upload
+  const path = `profile-photos/${userId}/${Date.now()}-${file.name}`;
+  const storageRef = ref(storage, path);
+
+  // Optional: 20s timeout to prevent hangs
+  const uploadWithTimeout = <T>(p: Promise<T>, ms = 20000) =>
+    new Promise<T>((resolve, reject) => {
+      const id = setTimeout(() => reject(new Error('Upload timed out')), ms);
+      p.then((v) => { clearTimeout(id); resolve(v); }).catch((e) => { clearTimeout(id); reject(e); });
+    });
+
+  // Do the upload
+  await uploadWithTimeout(uploadBytes(storageRef, file, { contentType: file.type }));
+
+  // Then fetch the download URL (also time-bounded)
+  const url = await uploadWithTimeout(getDownloadURL(storageRef), 10000);
+  return url;
 }
 
 export async function updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<UserProfile> {

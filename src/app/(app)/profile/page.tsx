@@ -1,13 +1,13 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
+import { useApp } from '@/app/(app)/layout';
 import { uploadProfilePhoto, changePassword } from '@/lib/auth';
-import type { UserProfile } from '@/lib/types';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -15,178 +15,218 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, User, KeyRound, ShieldCheck, Save, CheckCircle2, XCircle, Trash2, Eye, EyeOff } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useApp } from '@/app/(app)/layout';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+import {
+  Loader2, User, KeyRound, Save, CheckCircle2, XCircle,
+  Eye, EyeOff, Trash2
+} from 'lucide-react';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const ProfileFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
-  gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
+  university: z.enum(['Boston College', 'Vanderbilt'], { required_error: 'University is required.' }),
+  gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say'], { required_error: 'Gender is required.' }),
   campusArea: z.string().optional(),
-  photo: z
-    .instanceof(File)
-    .optional()
-    .refine((file) => !file || file.size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
-    .refine((file) => !file || ACCEPTED_IMAGE_TYPES.includes(file.type), 'Only .jpg, .png, and .webp formats are supported.'),
+  // Client-side File validation only
+  // @ts-expect-error: File exists in the browser
+  photo: z.instanceof(File).optional()
+    .refine((f) => !f || f.size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
+    .refine((f) => !f || ACCEPTED_IMAGE_TYPES.includes(f.type), 'Only .jpg, .png, and .webp are supported.'),
 });
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
-const PasswordFormSchema = z
-  .object({
-    currentPassword: z.string().min(1, 'Current password is required.'),
-    newPassword: z
-      .string()
-      .min(8, 'New password must be at least 8 characters.')
-      .regex(/[a-z]/, 'Must contain a lowercase letter.')
-      .regex(/[A-Z]/, 'Must contain an uppercase letter.')
-      .regex(/[0-9]/, 'Must contain a number.'),
-    confirmNewPassword: z.string(),
-  })
-  .refine((d) => d.currentPassword !== d.newPassword, {
-    message: 'New password must be different from the current one.',
-    path: ['newPassword'],
-  })
-  .refine((d) => d.newPassword === d.confirmNewPassword, {
-    message: "New passwords don't match",
-    path: ['confirmNewPassword'],
-  });
+const PasswordFormSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required.'),
+  newPassword: z.string()
+    .min(8, 'New password must be at least 8 characters long.')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter.')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter.')
+    .regex(/[0-9]/, 'Password must contain at least one number.'),
+  confirmNewPassword: z.string(),
+}).refine(d => d.currentPassword !== d.newPassword, {
+  message: 'New password must be different from the current one.',
+  path: ['newPassword'],
+}).refine(d => d.newPassword === d.confirmNewPassword, {
+  message: "New passwords don't match",
+  path: ['confirmNewPassword'],
+});
 type PasswordFormValues = z.infer<typeof PasswordFormSchema>;
 
-function Requirement({ ok, label }: { ok: boolean; label: string }) {
+function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
-    <div className={cn('flex items-center text-sm', ok ? 'text-green-600' : 'text-muted-foreground')}>
-      {ok ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <XCircle className="mr-2 h-4 w-4" />}
+    <div className={cn('flex items-center text-sm', meets ? 'text-green-600' : 'text-muted-foreground')}>
+      {meets ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <XCircle className="mr-2 h-4 w-4" />}
       {label}
     </div>
   );
 }
 
 export default function ProfilePage() {
-  const { toast } = useToast();
   const { userProfile: user, refreshUserProfile } = useApp();
+  const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
-  const [showCur, setShowCur] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConf, setShowConf] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
     defaultValues: {
       name: '',
+      university: 'Boston College',
       gender: 'Prefer not to say',
       campusArea: '',
       photo: undefined,
     },
   });
 
-  const passForm = useForm<PasswordFormValues>({
+  const passwordForm = useForm<PasswordFormValues>({
     resolver: zodResolver(PasswordFormSchema),
-    mode: 'onChange',
     defaultValues: { currentPassword: '', newPassword: '', confirmNewPassword: '' },
+    mode: 'onChange',
   });
 
-  const watchedNew = passForm.watch('newPassword');
-  const reqs = useMemo(() => {
-    const p = watchedNew || '';
-    return [
-      { label: 'At least 8 characters', ok: p.length >= 8 },
-      { label: 'Contains a lowercase letter', ok: /[a-z]/.test(p) },
-      { label: 'Contains an uppercase letter', ok: /[A-Z]/.test(p) },
-      { label: 'Contains a number', ok: /[0-9]/.test(p) },
-    ];
-  }, [watchedNew]);
-
   useEffect(() => {
-    if (!user) return;
-    profileForm.reset({
-      name: user.name,
-      gender: (user.gender as ProfileFormValues['gender']) ?? 'Prefer not to say',
-      campusArea: user.campusArea || '',
-      photo: undefined,
-    });
-    if (user.photoUrl) setPhotoPreview(user.photoUrl);
-    setIsLoading(false);
+    if (user) {
+      profileForm.reset({
+        name: user.name,
+        university: (user.university as 'Boston College' | 'Vanderbilt') ?? 'Boston College',
+        gender: (user.gender as any) || 'Prefer not to say',
+        campusArea: user.campusArea || '',
+        photo: undefined,
+      });
+      setPhotoPreview(user.photoUrl || null);
+      setIsLoading(false);
+    }
   }, [user, profileForm]);
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    profileForm.setValue('photo', f, { shouldValidate: true });
-    const r = new FileReader();
-    r.onloadend = () => setPhotoPreview(r.result as string);
-    r.readAsDataURL(f);
+  const watchedUniversity = profileForm.watch('university');
+  const watchedNewPassword = passwordForm.watch('newPassword');
+
+  const passwordRequirements = useMemo(() => {
+    const pass = watchedNewPassword || '';
+    return [
+      { label: 'At least 8 characters', meets: pass.length >= 8 },
+      { label: 'Contains a lowercase letter', meets: /[a-z]/.test(pass) },
+      { label: 'Contains an uppercase letter', meets: /[A-Z]/.test(pass) },
+      { label: 'Contains a number', meets: /[0-9]/.test(pass) },
+    ];
+  }, [watchedNewPassword]);
+
+  const getInitials = (name?: string) => {
+    if (!name) return 'U';
+    return name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase();
   };
 
-  const onSubmitProfile = async (vals: ProfileFormValues) => {
-    if (!user) return;
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      profileForm.setValue('photo', f, { shouldValidate: true });
+      const reader = new FileReader();
+      reader.onloadend = () => setPhotoPreview(reader.result as string);
+      reader.readAsDataURL(f);
+    }
+  };
+
+  // ---------- Save Profile ----------
+  const handleProfileSubmit = async (data: ProfileFormValues) => {
+    let photoUrl: string | undefined;
+
     try {
-      let photoUrl: string | undefined = undefined;
-      if (vals.photo) {
-        photoUrl = await uploadProfilePhoto(user.id, vals.photo);
+      // 1) Try uploading photo (if any) with a timeout safety
+      if (data.photo instanceof File) {
+        try {
+          photoUrl = await uploadProfilePhoto(user!.id, data.photo);
+        } catch (err: any) {
+          // If upload fails or times out, notify and allow saving other fields anyway
+          console.error('Photo upload failed:', err);
+          toast({
+            title: 'Photo upload failed',
+            description: err?.message ?? 'Saving your other changes without the new photo.',
+            variant: 'destructive',
+          });
+        }
       }
+
+      // 2) PATCH profile JSON (always time-bound)
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000); // 15s network guard
 
       const res = await fetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          name: vals.name.trim(),
-          university: user.university, // Keep original university
-          gender: vals.gender,
-          campusArea: user.university === 'Boston College' ? (vals.campusArea ?? '') : '',
+          name: data.name,
+          university: data.university,
+          gender: data.gender,
+          campusArea: data.university === 'Boston College' ? data.campusArea || '' : '',
           ...(photoUrl ? { photoUrl } : {}),
         }),
+        signal: ctrl.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || 'Update failed');
+      clearTimeout(t);
 
-      toast({ title: 'Profile updated', description: 'Your profile was saved.' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to update profile.');
+      }
+
+      toast({ title: 'Success!', description: 'Profile updated.' });
       await refreshUserProfile();
-    } catch (e: any) {
-      toast({ title: 'Update failed', description: e.message ?? 'Validation failed', variant: 'destructive' });
+      if (photoUrl) setPhotoPreview(photoUrl);
+    } catch (err: any) {
+      console.error('Profile update failed:', err);
+      toast({
+        title: 'Update failed',
+        description: err?.message ?? 'Please try again.',
+        variant: 'destructive',
+      });
     }
+    // IMPORTANT: allow the submit handler to finish no matter what.
+    // RHF will automatically unset isSubmitting when this Promise resolves.
   };
 
-  const onSubmitPassword = async (vals: PasswordFormValues) => {
+  // ---------- Change Password ----------
+  const handlePasswordSubmit = async (vals: PasswordFormValues) => {
     try {
       await changePassword(vals.currentPassword, vals.newPassword);
-      toast({ title: 'Password updated', description: 'Please sign in again if prompted.' });
-      passForm.reset();
-    } catch (e: any) {
-      toast({ title: 'Password change failed', description: e.message ?? 'Try again.', variant: 'destructive' });
+      toast({ title: 'Password updated', description: 'You may be asked to reauthenticate later.' });
+      passwordForm.reset();
+    } catch (err: any) {
+      toast({
+        title: 'Password update failed',
+        description: err?.message ?? 'Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
-  const onDelete = async () => {
-    setIsDeleting(true);
+  // ---------- Delete Account (optional) ----------
+  const handleDeleteAccount = async () => {
     try {
-      const res = await fetch('/api/account/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || 'Deletion failed');
-      toast({ title: 'Account deleted', description: 'Goodbye! 👋' });
-      // Let your auth state listener redirect to /login
-    } catch (e: any) {
-      toast({ title: 'Deletion failed', description: e.message ?? 'Try again.', variant: 'destructive' });
+      setIsDeleting(true);
+      const res = await fetch('/api/account/delete', { method: 'POST', credentials: 'same-origin' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || 'Failed to delete account.');
+      toast({ title: 'Account deleted', description: 'We’re sad to see you go.' });
+      if (typeof window !== 'undefined') window.location.href = '/login?deleted=true';
+    } catch (err: any) {
+      toast({ title: 'Deletion failed', description: err?.message ?? 'Please try again.', variant: 'destructive' });
       setIsDeleting(false);
     }
   };
-
-  const getInitials = (name?: string) => (name ? name.split(' ').map((n) => n[0]).join('').toUpperCase() : 'U');
 
   if (isLoading || !user) {
     return (
@@ -199,13 +239,13 @@ export default function ProfilePage() {
   return (
     <div className="container mx-auto py-8 px-4 md:px-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: avatar */}
+        {/* Left: summary card */}
         <div className="lg:col-span-1 space-y-8">
           <Card className="shadow-lg">
             <CardHeader className="items-center text-center p-6">
               <Avatar className="h-28 w-28 border-4 border-primary shadow-md">
                 <AvatarImage src={photoPreview || undefined} alt={user.name} />
-                <AvatarFallback className="text-4xl">{getInitials(user.name)}</AvatarFallback>
+                <AvatarFallback className="text-4xl">{(user.name || 'U').split(' ').map(n => n[0]).join('').toUpperCase()}</AvatarFallback>
               </Avatar>
               <CardTitle className="text-2xl mt-4 font-headline">{user.name}</CardTitle>
               <CardDescription className="text-muted-foreground">{user.university}</CardDescription>
@@ -217,9 +257,8 @@ export default function ProfilePage() {
         <div className="lg:col-span-2 space-y-8">
           <Card className="shadow-lg">
             <CardContent className="p-6">
-              {/* PROFILE */}
               <Form {...profileForm}>
-                <form onSubmit={profileForm.handleSubmit(onSubmitProfile)} className="space-y-6">
+                <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-6">
                   <div>
                     <div>
                       <h3 className="text-xl font-headline flex items-center gap-2">
@@ -229,11 +268,13 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-4 pt-4">
+                      {/* Email (display) */}
                       <div className="space-y-2">
-                        <Label>Email</Label>
+                        <Label htmlFor="email">Email</Label>
                         <p className="text-sm text-foreground/90">{user.email}</p>
                       </div>
 
+                      {/* Photo */}
                       <FormField
                         control={profileForm.control}
                         name="photo"
@@ -244,39 +285,55 @@ export default function ProfilePage() {
                               <input
                                 id="photo"
                                 type="file"
-                                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                                onChange={onFile}
-                                accept="image/png, image/jpeg, image/webp"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                                onChange={handleFileChange}
                               />
                             </FormControl>
-                            <FormDescription>Accepted: PNG, JPEG, WEBP. Max 5MB.</FormDescription>
+                            <FormDescription>Accepted: JPG, PNG, WEBP. Max 5MB.</FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
 
+                      {/* Name */}
                       <FormField
                         control={profileForm.control}
                         name="name"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Full Name</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
+                            <FormControl><Input {...field} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      
-                       <div className="space-y-2">
-                          <Label>University</Label>
-                          <Input value={user.university} disabled className="bg-muted/50"/>
-                          <FormDescription>Your university cannot be changed after signup.</FormDescription>
-                      </div>
 
+                      {/* University */}
+                      <FormField
+                        control={profileForm.control}
+                        name="university"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>University</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value} disabled>
+                              <FormControl>
+                                <SelectTrigger id="university">
+                                  <SelectValue placeholder="Select University" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="Boston College">Boston College</SelectItem>
+                                <SelectItem value="Vanderbilt">Vanderbilt</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                      {user.university === 'Boston College' && (
+                      {/* Campus (BC only) */}
+                      {watchedUniversity === 'Boston College' && (
                         <FormField
                           control={profileForm.control}
                           name="campusArea"
@@ -302,6 +359,7 @@ export default function ProfilePage() {
                         />
                       )}
 
+                      {/* Gender */}
                       <FormField
                         control={profileForm.control}
                         name="gender"
@@ -330,71 +388,80 @@ export default function ProfilePage() {
 
                   <Button type="submit" disabled={profileForm.formState.isSubmitting}>
                     <Save className="mr-2 h-4 w-4" />
-                    {profileForm.formState.isSubmitting ? 'Saving...' : 'Save Changes'}
+                    {profileForm.formState.isSubmitting ? 'Saving…' : 'Save Changes'}
                   </Button>
                 </form>
               </Form>
 
               <Separator className="my-8" />
 
-              {/* PASSWORD */}
+              {/* Change Password */}
               <div className="space-y-6">
                 <div>
                   <h3 className="text-xl font-headline flex items-center gap-2">
                     <KeyRound className="h-5 w-5 text-primary" /> Change Password
                   </h3>
-                  <p className="text-muted-foreground text-sm mt-1">For your security, you may be logged out after changing your password.</p>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    For your security, you may be asked to reauthenticate.
+                  </p>
                 </div>
-                <form onSubmit={passForm.handleSubmit(onSubmitPassword)} className="space-y-4">
+
+                <form onSubmit={passwordForm.handleSubmit(async (vals) => handlePasswordSubmit(vals))} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="currentPassword">Current Password</Label>
                     <div className="relative">
-                      <Input id="currentPassword" type={showCur ? 'text' : 'password'} {...passForm.register('currentPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowCur((v) => !v)}>
-                        {showCur ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <Input id="currentPassword" type={showCurrentPassword ? 'text' : 'password'} {...passwordForm.register('currentPassword')} />
+                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowCurrentPassword(v => !v)}>
+                        {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    {passForm.formState.errors.currentPassword && <p className="text-destructive text-sm">{passForm.formState.errors.currentPassword.message}</p>}
+                    {passwordForm.formState.errors.currentPassword && (
+                      <p className="text-destructive text-sm">{passwordForm.formState.errors.currentPassword.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="newPassword">New Password</Label>
                     <div className="relative">
-                      <Input id="newPassword" type={showNew ? 'text' : 'password'} {...passForm.register('newPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowNew((v) => !v)}>
-                        {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <Input id="newPassword" type={showNewPassword ? 'text' : 'password'} {...passwordForm.register('newPassword')} />
+                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowNewPassword(v => !v)}>
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    {passForm.formState.errors.newPassword && <p className="text-destructive text-sm">{passForm.formState.errors.newPassword.message}</p>}
+                    {passwordForm.formState.errors.newPassword && (
+                      <p className="text-destructive text-sm">{passwordForm.formState.errors.newPassword.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
                     <div className="relative">
-                      <Input id="confirmNewPassword" type={showConf ? 'text' : 'password'} {...passForm.register('confirmNewPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConf((v) => !v)}>
-                        {showConf ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <Input id="confirmNewPassword" type={showConfirmNewPassword ? 'text' : 'password'} {...passwordForm.register('confirmNewPassword')} />
+                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConfirmNewPassword(v => !v)}>
+                        {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    {passForm.formState.errors.confirmNewPassword && <p className="text-destructive text-sm">{passForm.formState.errors.confirmNewPassword.message}</p>}
+                    {passwordForm.formState.errors.confirmNewPassword && (
+                      <p className="text-destructive text-sm">{passwordForm.formState.errors.confirmNewPassword.message}</p>
+                    )}
                   </div>
 
                   <div className="space-y-1 rounded-md border p-3 shadow-sm">
-                    {reqs.map((r, i) => (
-                      <Requirement key={i} ok={r.ok} label={r.label} />
+                    {passwordRequirements.map((req, i) => (
+                      <PasswordRequirement key={i} meets={req.meets} label={req.label} />
                     ))}
                   </div>
 
-                  <Button type="submit" variant="secondary" disabled={!passForm.formState.isValid || passForm.formState.isSubmitting}>
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    {passForm.formState.isSubmitting ? 'Updating...' : 'Update Password'}
+                  <Button type="submit" variant="secondary" disabled={!passwordForm.formState.isValid || passwordForm.formState.isSubmitting}>
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    {passwordForm.formState.isSubmitting ? 'Updating…' : 'Update Password'}
                   </Button>
                 </form>
               </div>
 
               <Separator className="my-8" />
 
-              {/* DELETE ACCOUNT */}
+              {/* Delete account (optional) */}
               <div className="space-y-4">
                 <div>
                   <h3 className="text-xl font-headline flex items-center gap-2 text-destructive">
@@ -405,25 +472,19 @@ export default function ProfilePage() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" disabled={isDeleting}>
-                      {isDeleting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...
-                        </>
-                      ) : (
-                        'Delete My Account'
-                      )}
+                      {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting…</> : 'Delete My Account'}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete your account, your profile, and remove you from any matched trips.
+                        This action cannot be undone. This will permanently delete your account and related data.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={onDelete}>
+                      <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive hover:bg-destructive/90">
                         Yes, delete my account
                       </AlertDialogAction>
                     </AlertDialogFooter>
