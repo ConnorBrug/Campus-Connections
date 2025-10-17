@@ -1,47 +1,52 @@
-import { NextResponse } from 'next/server';
+// app/api/session/route.ts
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase-admin";
-import { cookies } from 'next/headers';
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
     const { idToken } = await req.json();
-
     if (!idToken) {
-      return NextResponse.json({ error: 'Missing ID token' }, { status: 400 });
+      return NextResponse.json({ error: "Missing idToken" }, { status: 400 });
     }
 
-    const auth = adminAuth;
-    const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
+    const decoded = await adminAuth.verifyIdToken(idToken);
+    const expiresIn = 5 * 24 * 60 * 60 * 1000; // 5 days
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
-    // Create a secure session cookie from the ID token
-    const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
-
-    const cookieStore = cookies();
-    cookieStore.set('__session', sessionCookie, {
-      maxAge: expiresIn / 1000,
+    cookies().set({
+      name: "__session",
+      value: sessionCookie,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: Math.floor(expiresIn / 1000),
     });
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error creating session cookie:', error);
-    return NextResponse.json({ error: 'Failed to create session' }, { status: 500 });
+    return NextResponse.json({
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      name: (decoded as any).name ?? null,
+    });
+  } catch (err) {
+    console.error("Session creation failed:", err);
+    return NextResponse.json(
+      { error: "Failed to create server session. Please try again." },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE() {
-  try {
-    const cookieStore = cookies();
-    cookieStore.set('__session', '', { maxAge: 0, path: '/' });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error clearing session cookie:', error);
-    return NextResponse.json({ error: 'Failed to clear session' }, { status: 500 });
-  }
+  cookies().set("__session", "", {
+    path: "/",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+  });
+  return NextResponse.json({ ok: true });
 }
-
-    
