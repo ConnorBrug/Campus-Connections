@@ -81,27 +81,31 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
 
 export async function login(email: string, passwordInput: string): Promise<UserProfile> {
   await setPersistence(auth, browserLocalPersistence);
-  const { user } = await signInWithEmailAndPassword(auth, email, passwordInput);
 
-  // Create server session
-  const idToken = await user.getIdToken(true); // force fresh
+  // 1) Firebase sign-in
+  const { user } = await signInWithEmailAndPassword(auth, email.trim(), passwordInput);
+
+  // 2) Create server-side session (HTTP-only cookie)
+  const idToken = await user.getIdToken(true); // force fresh token
   const res = await fetch("/api/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
+    credentials: "same-origin",             // <-- important in Firebase Studio preview
     body: JSON.stringify({ idToken }),
   });
 
   if (!res.ok) {
-    await signOut(auth);
+    // Try to show the detailed JSON from the route (error + hint)
     let msg = "Failed to create server session. Please try again.";
     try {
       const data = await res.json();
-      if (data?.error) msg = data.error;
+      if (data?.error) msg = data.error + (data?.hint ? ` — ${data.hint}` : "");
     } catch {}
+    await signOut(auth); // avoid split session state
     throw new Error(msg);
   }
 
+  // 3) Load profile
   const userProfile = await getUserProfile(user.uid);
   if (!userProfile) {
     await signOut(auth);

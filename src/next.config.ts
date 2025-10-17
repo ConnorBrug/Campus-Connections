@@ -1,8 +1,6 @@
 // next.config.ts
 import type { NextConfig } from "next";
 
-// Read comma-separated origins from env to allow other dev UIs (e.g. Firebase Studio)
-// to fetch /_next/* assets from your Next dev server.
 const allowedFromEnv =
   (process.env.ALLOWED_DEV_ORIGINS || "")
     .split(",")
@@ -20,13 +18,10 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Next 15 replacement for the removed experimental.serverComponentsExternalPackages
-  serverExternalPackages: [
-    "firebase-admin",
-    // add other server-only deps if needed
-  ],
+  // correct for Next 15
+  serverExternalPackages: ["firebase-admin"],
 
-  // Silence Next’s dev cross-origin warnings (use .env to list studio origins)
+  // quiets the Studio cross-origin dev noise
   allowedDevOrigins: allowedFromEnv,
 };
 
