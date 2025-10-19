@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -11,6 +12,8 @@ import {
   setPersistence,
   browserLocalPersistence,
   deleteUser,
+  sendPasswordResetEmail,
+  sendEmailVerification,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -35,7 +38,6 @@ export interface SignupData {
 }
 
 export async function signup(userData: SignupData): Promise<FirebaseUser> {
-  // Ensure the browser keeps Firebase auth state
   await setPersistence(auth, browserLocalPersistence);
 
   const userCredential = await createUserWithEmailAndPassword(
@@ -44,10 +46,8 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
     userData.passwordInput
   );
 
+  const user = userCredential.user;
   try {
-    const user = userCredential.user;
-
-    // Create profile in Firestore
     const userDocRef = doc(db, "users", user.uid);
     await runTransaction(db, async (tx) => {
       const profile: UserProfile = {
@@ -58,41 +58,38 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
         photoUrl: userData.photoUrl,
         gender: userData.gender,
         dateOfBirth: userData.dateOfBirth,
-        emailVerified: true,
+        emailVerified: user.emailVerified, // Use initial state from Firebase
         isBanned: false,
         ...(userData.campusArea && { campusArea: userData.campusArea }),
       };
       tx.set(userDocRef, profile);
     });
 
-    // 🔐 Create the Next.js server session cookie right after signup
+    // Send verification email
+    await sendEmailVerification(user);
+
+    // Create server session
     const idToken = await user.getIdToken(true);
     const res = await fetch("/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "same-origin", // or "include" — either is fine here
+      credentials: "same-origin",
       body: JSON.stringify({ idToken }),
     });
 
     if (!res.ok) {
-      // Best-effort rollback so user isn't half-registered
-      try { await deleteUser(user); } catch {}
-      try { await signOut(auth); } catch {}
-      let msg = "Failed to create server session. Please log in.";
-      try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
-      throw new Error(msg);
+      throw new Error("Failed to create server session after signup.");
     }
 
     return user;
   } catch (e) {
-    // Roll back if Firestore or cookie step failed
-    try { await deleteUser(userCredential.user); } catch {}
+    try { await deleteUser(user); } catch {}
     throw e;
   }
 }
 
 // ----- Login / Logout + server cookie -----
-export async function login(email: string, passwordInput: string): Promise<UserProfile> {
+export async function login(email: string, passwordInput: string): Promise<{profile: UserProfile, user: FirebaseUser}> {
   await setPersistence(auth, browserLocalPersistence);
   const { user } = await signInWithEmailAndPassword(auth, email.trim(), passwordInput);
 
@@ -115,7 +112,7 @@ export async function login(email: string, passwordInput: string): Promise<UserP
     await signOut(auth);
     throw new Error('User profile not found after login.');
   }
-  return profile;
+  return { profile, user };
 }
 
 export async function logout(): Promise<void> {
@@ -123,7 +120,6 @@ export async function logout(): Promise<void> {
   await signOut(auth);
 }
 
-// Used by Header.tsx
 export async function logoutAndRedirectClientSide(): Promise<void> {
   try { await fetch("/api/session", { method: "DELETE", credentials: "same-origin" }); } catch {}
   try { await signOut(auth); } catch {}
@@ -140,7 +136,23 @@ export function getCurrentUser(): Promise<UserProfile | null> {
       async (user) => {
         unsub();
         if (!user) return resolve(null);
-        try { resolve(await getUserProfile(user.uid)); } catch (e) { reject(e); }
+        try {
+          // It's crucial to reload the user to get the latest emailVerified status
+          await user.reload();
+          if (!user.emailVerified) {
+             if (window.location.pathname !== '/verify-email') {
+                window.location.href = '/verify-email';
+             }
+             // For verify-email page, we still resolve profile to show email
+             const profile = await getUserProfile(user.uid);
+             resolve(profile);
+          } else {
+             const profile = await getUserProfile(user.uid);
+             resolve(profile);
+          }
+        } catch (e) {
+          reject(e);
+        }
       },
       reject
     );
@@ -153,25 +165,12 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
-// ----- Profile + password -----
+// ----- Profile + password + email -----
 export async function uploadProfilePhoto(userId: string, file: File): Promise<string> {
-  // Unique, content-type aware upload
   const path = `profile-photos/${userId}/${Date.now()}-${file.name}`;
   const storageRef = ref(storage, path);
-
-  // Optional: 20s timeout to prevent hangs
-  const uploadWithTimeout = <T>(p: Promise<T>, ms = 20000) =>
-    new Promise<T>((resolve, reject) => {
-      const id = setTimeout(() => reject(new Error('Upload timed out')), ms);
-      p.then((v) => { clearTimeout(id); resolve(v); }).catch((e) => { clearTimeout(id); reject(e); });
-    });
-
-  // Do the upload
-  await uploadWithTimeout(uploadBytes(storageRef, file, { contentType: file.type }));
-
-  // Then fetch the download URL (also time-bounded)
-  const url = await uploadWithTimeout(getDownloadURL(storageRef), 10000);
-  return url;
+  await uploadBytes(storageRef, file, { contentType: file.type });
+  return getDownloadURL(storageRef);
 }
 
 export async function updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<UserProfile> {
@@ -188,6 +187,16 @@ export async function changePassword(currentPassword: string, newPassword: strin
   const credential = EmailAuthProvider.credential(user.email, currentPassword);
   await reauthenticateWithCredential(user, credential);
   await updatePassword(user, newPassword);
+}
+
+export async function sendPasswordReset(email: string): Promise<void> {
+  await sendPasswordResetEmail(auth, email);
+}
+
+export async function sendVerificationEmail(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is currently signed in to send verification email.");
+  await sendEmailVerification(user);
 }
 
 // ----- Trips -----
@@ -364,4 +373,31 @@ export async function flagUser(flaggerId: string, flaggedUserId: string, reason:
   }
 
   await batch.commit();
+}
+
+// --- Account Deletion ---
+export async function deleteCurrentUserAccount(): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user is currently signed in.");
+
+    // This operation is sensitive and requires recent authentication.
+    // In a real app, you would force the user to re-enter their password here.
+    // For this example, we assume recent authentication.
+
+    // 1. Call the server API to delete server-side resources
+    const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.message || "Server-side deletion failed.");
+    }
+
+    // 2. Delete the client-side user
+    // Note: The /api/account/delete endpoint ALREADY deletes the auth user via Admin SDK.
+    // So, we just need to sign out on the client.
+    await logout();
 }

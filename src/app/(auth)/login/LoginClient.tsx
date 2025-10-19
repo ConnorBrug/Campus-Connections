@@ -26,8 +26,13 @@ export default function LoginClient() {
     setIsSubmitting(true);
     setPageError(null);
     try {
-      await login(email, password);
-      router.replace('/main'); // prevent going back to /login
+      const { user } = await login(email, password);
+      
+      if (!user.emailVerified) {
+        router.replace('/verify-email');
+      } else {
+        router.replace('/main');
+      }
       // On success, we don't set isSubmitting to false,
       // because we want the loading indicator to show until the redirect is complete.
     } catch (error: any) {
@@ -54,6 +59,8 @@ export default function LoginClient() {
     }
   };
 
+  // The loading indicator is now the default state when submitting,
+  // preventing the form from reappearing.
   if (isSubmitting) {
     return (
       <div className="w-full flex flex-col items-center justify-center py-10">

@@ -35,12 +35,13 @@ export default function AppLayout({
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   const fetchUserProfile = useCallback(async () => {
+    // No need to set loading here, it's handled by the initial state
     try {
       const profile = await getCurrentUser();
-      setUserProfile(profile); // Set profile to null if not logged in
+      setUserProfile(profile);
     } catch (error) {
       console.error("AppLayout: Error checking auth state:", error);
-      setUserProfile(null); // Assume not logged in on error
+      setUserProfile(null);
     } finally {
         setIsLoading(false);
     }
@@ -53,10 +54,13 @@ export default function AppLayout({
   useEffect(() => {
     // This effect runs AFTER the user profile has been fetched and isLoading is false.
     // This prevents the redirect loop.
-    if (!isLoading && !userProfile) {
-        router.push('/login');
+    if (!isLoading && !userProfile && pathname !== '/verify-email') {
+        const unprotectedPaths = ['/login', '/signup', '/forgot-password', '/privacy-policy', '/terms-of-service'];
+        if (!unprotectedPaths.includes(pathname)) {
+            router.push('/login');
+        }
     }
-  }, [isLoading, userProfile, router]);
+  }, [isLoading, userProfile, router, pathname]);
 
 
   if (isLoading) {
@@ -68,9 +72,7 @@ export default function AppLayout({
     );
   }
 
-  // If we are done loading and there is no user profile, we show a redirecting message
-  // while the useEffect above handles the actual redirect. This avoids rendering children
-  // that might depend on a user.
+  // If we are done loading and there is no user profile on a protected route, show redirecting message.
   if (!userProfile) {
      return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background">

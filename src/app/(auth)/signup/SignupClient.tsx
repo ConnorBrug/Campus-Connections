@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
@@ -159,10 +160,10 @@ export default function SignupClient() {
       if (user) {
         toast({
           title: "Account Created!",
-          description: "Welcome to Connections! You're ready to find a ride.",
+          description: "A verification email has been sent. Please check your inbox.",
           duration: 7000,
         });
-        router.replace('/main'); // prevent going back to /signup
+        router.replace('/verify-email');
       }
     } catch (error: any) {
       let errorMessage: React.ReactNode = "An unexpected error occurred during signup.";
@@ -300,7 +301,7 @@ export default function SignupClient() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>University</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} name="university">
+                  <Select onValueChange={field.onChange} value={field.value} name="university" disabled>
                     <FormControl>
                       <SelectTrigger id="university" aria-label="University">
                         <SelectValue placeholder="Select University" />
