@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -16,8 +15,26 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage
+} from '@/components/ui/form';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -27,18 +44,24 @@ import {
 } from 'lucide-react';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
+/** SSR-safe File schema (avoids referencing window.File on the server) */
+const FileSchema = typeof window === 'undefined' ? z.any() : z.instanceof(File);
 
 const ProfileFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   university: z.enum(['Boston College', 'Vanderbilt'], { required_error: 'University is required.' }),
   gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say'], { required_error: 'Gender is required.' }),
   campusArea: z.string().optional(),
-  // Client-side File validation only
-  // @ts-expect-error: File exists in the browser
-  photo: z.instanceof(File).optional()
-    .refine((f) => !f || f.size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
-    .refine((f) => !f || ACCEPTED_IMAGE_TYPES.includes(f.type), 'Only .jpg, .png, and .webp are supported.'),
+  photo: FileSchema
+    .optional()
+    .refine((f: any) => !f || typeof f === 'string' || (f && typeof f.size === 'number'), 'Invalid file.')
+    .refine((f: any) => !f || f.size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
+    .refine(
+      (f: any) => !f || ACCEPTED_IMAGE_TYPES.includes(f.type as (typeof ACCEPTED_IMAGE_TYPES)[number]),
+      'Only .jpg, .png, and .webp are supported.'
+    ),
 });
 type ProfileFormValues = z.infer<typeof ProfileFormSchema>;
 
@@ -144,12 +167,11 @@ export default function ProfilePage() {
     let photoUrl: string | undefined;
 
     try {
-      // 1) Try uploading photo (if any) with a timeout safety
-      if (data.photo instanceof File) {
+      // 1) Upload photo (if any)
+      if (data.photo && typeof data.photo !== 'string') {
         try {
           photoUrl = await uploadProfilePhoto(user!.id, data.photo);
         } catch (err: any) {
-          // If upload fails or times out, notify and allow saving other fields anyway
           console.error('Photo upload failed:', err);
           toast({
             title: 'Photo upload failed',
@@ -159,9 +181,9 @@ export default function ProfilePage() {
         }
       }
 
-      // 2) PATCH profile JSON (always time-bound)
+      // 2) PATCH profile JSON
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 15000); // 15s network guard
+      const t = setTimeout(() => ctrl.abort(), 15000);
 
       const res = await fetch('/api/profile', {
         method: 'PATCH',
@@ -179,9 +201,7 @@ export default function ProfilePage() {
       clearTimeout(t);
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json?.message || 'Failed to update profile.');
-      }
+      if (!res.ok) throw new Error(json?.message || 'Failed to update profile.');
 
       toast({ title: 'Success!', description: 'Profile updated.' });
       await refreshUserProfile();
@@ -194,8 +214,6 @@ export default function ProfilePage() {
         variant: 'destructive',
       });
     }
-    // IMPORTANT: allow the submit handler to finish no matter what.
-    // RHF will automatically unset isSubmitting when this Promise resolves.
   };
 
   // ---------- Change Password ----------
@@ -245,7 +263,9 @@ export default function ProfilePage() {
             <CardHeader className="items-center text-center p-6">
               <Avatar className="h-28 w-28 border-4 border-primary shadow-md">
                 <AvatarImage src={photoPreview || undefined} alt={user.name} />
-                <AvatarFallback className="text-4xl">{(user.name || 'U').split(' ').map(n => n[0]).join('').toUpperCase()}</AvatarFallback>
+                <AvatarFallback className="text-4xl">
+                  {getInitials(user.name)}
+                </AvatarFallback>
               </Avatar>
               <CardTitle className="text-2xl mt-4 font-headline">{user.name}</CardTitle>
               <CardDescription className="text-muted-foreground">{user.university}</CardDescription>
@@ -309,7 +329,7 @@ export default function ProfilePage() {
                         )}
                       />
 
-                      {/* University */}
+                      {/* University (fixed for this app) */}
                       <FormField
                         control={profileForm.control}
                         name="university"
@@ -498,5 +518,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    
