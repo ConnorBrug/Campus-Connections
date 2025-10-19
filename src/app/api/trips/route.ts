@@ -55,6 +55,7 @@ export async function POST(req: Request) {
       id: tripRef.id,
       userId: uid,
       userName: user.name ?? 'User',
+      userEmail: user.email ?? decoded.email, // Add user's email
       userPhotoUrl: user.photoUrl ?? null,
       university: user.university ?? '',
       campusArea: campusArea || user.campusArea || null,

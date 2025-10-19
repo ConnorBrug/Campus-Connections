@@ -122,10 +122,10 @@ export async function GET(req: Request) {
       if (!stillPending) continue;
 
       const flightTime = parseISO(trip.flightDateTime);
-      if (differenceInHours(flightTime, now) <= 5 && !trip.noMatchWarningSent) {
+      if (differenceInHours(flightTime, now) <= 5 && !trip.noMatchWarningSent && trip.userEmail) {
         await sendNotificationEmail({
-          to: (trip as any).userEmail || "change-me@example.com", // ensure real email is stored
-          subject: "Update on your trip request",
+          to: trip.userEmail,
+          subject: "Update on your Connections trip request",
           body:
             "We are still looking for a match for your upcoming trip. As it is getting close to your flight time, we recommend you start looking into alternative transportation.",
           link: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`,

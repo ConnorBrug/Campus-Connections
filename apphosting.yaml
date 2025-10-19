@@ -18,8 +18,7 @@ secretEnv:
       - RUNTIME
   - secret: FIREBASE_AUTH_DOMAIN
     env: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    availability:
-      - BUILD
+    availability:      - BUILD
       - RUNTIME
   - secret: FIREBASE_MESSAGING_SENDER_ID
     env: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
@@ -40,5 +39,8 @@ secretEnv:
     availability:
       - RUNTIME
   - secret: CRON_SECRET
+    availability:
+      - RUNTIME
+  - secret: RESEND_API_KEY
     availability:
       - RUNTIME

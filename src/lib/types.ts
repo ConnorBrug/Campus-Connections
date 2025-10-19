@@ -17,6 +17,7 @@ export interface TripRequest {
   id: string;
   userId: string;
   userName: string;
+  userEmail: string; // Added for notifications
   userPhotoUrl?: string;
   flightCode: string;
   flightDate: string; // yyyy-MM-dd
