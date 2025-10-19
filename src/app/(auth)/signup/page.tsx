@@ -218,37 +218,265 @@ export default function SignupPage() {
   }
 
   return (
-    <Card className="w-full max-w-lg mx-auto shadow-xl">
-      <CardHeader className="text-center">
-        <div className="mb-4 flex justify-center">
-          <CarFront className="h-12 w-12 text-primary" />
-        </div>
-        <CardTitle className="text-3xl font-headline">Create Your Account</CardTitle>
-        <CardDescription>Join Connections to find your ride.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {pageError && (
-          <div className="mb-4 p-3 border border-destructive bg-destructive/10 rounded-md text-destructive text-sm">
-            <div className="flex items-start">
-              <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="font-semibold">Signup Error</span>
-                <p>{pageError}</p>
+    <div className="w-full">
+      <Card className="w-full max-w-lg shadow-xl">
+        <CardHeader className="text-center">
+          <div className="mb-4 flex justify-center">
+            <CarFront className="h-12 w-12 text-primary" />
+          </div>
+          <CardTitle className="text-3xl font-headline">Create Your Account</CardTitle>
+          <CardDescription>Join Connections to find your ride.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {pageError && (
+            <div className="mb-4 p-3 border border-destructive bg-destructive/10 rounded-md text-destructive text-sm">
+              <div className="flex items-start">
+                <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="font-semibold">Signup Error</span>
+                  <p>{pageError}</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        {/* the Form JSX you already have remains unchanged */}
-        {/* ... */}
-      </CardContent>
-      <CardFooter className="flex flex-col items-center pt-2">
-        <p className="text-sm text-muted-foreground">
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Log in
-          </Link>
-        </p>
-      </CardFooter>
-    </Card>
+          )}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="First Name" {...field} autoComplete="given-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Last Name" {...field} autoComplete="family-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>University Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="your.name@university.edu" {...field} onChange={handleEmailChange} autoComplete="email" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="university"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>University</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} name="university">
+                      <FormControl>
+                        <SelectTrigger id="university" aria-label="University">
+                          <SelectValue placeholder="Select University" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Boston College">Boston College</SelectItem>
+                        <SelectItem value="Vanderbilt">Vanderbilt</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {watchedUniversity === 'Boston College' && (
+                <FormField
+                  control={form.control}
+                  name="campusArea"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Boston College Campus Area</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ''} name="campusArea">
+                        <FormControl>
+                          <SelectTrigger id="campusArea">
+                            <SelectValue placeholder="Select BC Campus Area" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="2k">2k</SelectItem>
+                          <SelectItem value="Newton">Newton</SelectItem>
+                          <SelectItem value="CoRo/Upper">CoRo/Upper (College Road/Upper)</SelectItem>
+                          <SelectItem value="Lower">Lower</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="dateOfBirth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date of Birth</FormLabel>
+                      <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                            >
+                              {field.value ? format(field.value, "PPP") : <span>MM/DD/YYYY</span>}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          {isClient && (
+                            <Calendar
+                              mode="single"
+                              captionLayout="dropdown-buttons"
+                              fromYear={new Date().getFullYear() - 100}
+                              toYear={subYears(new Date(), 18).getFullYear()}
+                              selected={field.value}
+                              onSelect={(date) => {
+                                field.onChange(date);
+                                setIsCalendarOpen(false);
+                              }}
+                              disabled={(date) =>
+                                date > subYears(new Date(), 18) || date < new Date("1900-01-01")
+                              }
+                              defaultMonth={subYears(new Date(), 18)}
+                              initialFocus
+                            />
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="gender"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Gender</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value} name="gender">
+                        <FormControl>
+                          <SelectTrigger id="gender">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                          <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Confirm Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="space-y-1 rounded-md border p-3 shadow-sm">
+                {passwordRequirements.map((req, i) => (
+                  <PasswordRequirement key={i} meets={req.meets} label={req.label} />
+                ))}
+              </div>
+
+              <FormField
+                control={form.control}
+                name="agreeToTerms"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                    <FormControl>
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} id="agreeToTerms" />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <Label htmlFor="agreeToTerms" className="text-sm font-normal text-muted-foreground">
+                        I agree to the Connections{' '}
+                        <Link href="/terms-of-service" className="underline hover:text-primary" target="_blank" rel="noopener noreferrer">
+                          Terms of Service
+                        </Link>{' '}
+                        and{' '}
+                        <Link href="/privacy-policy" className="underline hover:text-primary" target="_blank" rel="noopener noreferrer">
+                          Privacy Policy
+                        </Link>
+                        .
+                      </Label>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              <Button type="submit" className="w-full" disabled={!form.formState.isValid || isLoading}>
+                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing Up...</> : "Sign Up"}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter className="flex flex-col items-center pt-2">
+          <p className="text-sm text-muted-foreground">
+            Already have an account?{' '}
+            <Link href="/login" className="font-medium text-primary hover:underline">
+              Log in
+            </Link>
+          </p>
+        </CardFooter>
+      </Card>
+    </div>
   );
 }
