@@ -37,25 +37,26 @@ export default function AppLayout({
   const fetchUserProfile = useCallback(async () => {
     try {
       const profile = await getCurrentUser();
-      if (profile) {
-        setUserProfile(profile);
-      } else {
-        router.push('/login');
-      }
+      setUserProfile(profile); // Set profile to null if not logged in
     } catch (error) {
       console.error("AppLayout: Error checking auth state:", error);
-      router.push('/login');
-    }
-  }, [router]);
-
-  useEffect(() => {
-    const loadUser = async () => {
-        setIsLoading(true);
-        await fetchUserProfile();
+      setUserProfile(null); // Assume not logged in on error
+    } finally {
         setIsLoading(false);
     }
-    loadUser();
+  }, []);
+
+  useEffect(() => {
+    fetchUserProfile();
   }, [fetchUserProfile]);
+
+  useEffect(() => {
+    // This effect runs AFTER the user profile has been fetched and isLoading is false.
+    // This prevents the redirect loop.
+    if (!isLoading && !userProfile) {
+        router.push('/login');
+    }
+  }, [isLoading, userProfile, router]);
 
 
   if (isLoading) {
@@ -67,11 +68,14 @@ export default function AppLayout({
     );
   }
 
+  // If we are done loading and there is no user profile, we show a redirecting message
+  // while the useEffect above handles the actual redirect. This avoids rendering children
+  // that might depend on a user.
   if (!userProfile) {
      return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-2 text-muted-foreground">Redirecting...</p>
+        <p className="mt-2 text-muted-foreground">Redirecting to login...</p>
       </div>
     );
   }
