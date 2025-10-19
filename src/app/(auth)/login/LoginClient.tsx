@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -27,6 +28,8 @@ export default function LoginClient() {
     try {
       await login(email, password);
       router.replace('/main'); // prevent going back to /login
+      // On success, we don't set isSubmitting to false,
+      // because we want the loading indicator to show until the redirect is complete.
     } catch (error: any) {
       if (error.code) {
         switch (error.code) {
@@ -47,8 +50,7 @@ export default function LoginClient() {
       } else {
         setPageError(error?.message || 'Login failed. Please check your credentials.');
       }
-    } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Only set to false on error
     }
   };
 
