@@ -1,8 +1,6 @@
-// lib/email.ts
 import { Resend } from 'resend';
-import NotificationEmail from '@/emails/NotificationEmail';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export type EmailPayload = {
     to: string;
@@ -14,27 +12,33 @@ export type EmailPayload = {
 export async function sendNotificationEmail(payload: EmailPayload): Promise<void> {
     const fromEmail = process.env.FROM_EMAIL || 'Connections <noreply@yourdomain.com>';
 
-    if (!process.env.RESEND_API_KEY) {
+    if (!resend) {
         console.warn("RESEND_API_KEY is not set. Email will be logged to console instead of sent.");
-        console.log("--- Mock Email ---");
-        console.log("To:", payload.to);
-        console.log("Subject:", payload.subject);
-        console.log("Body:", payload.body);
-        console.log("Link:", payload.link);
-        console.log("--------------------");
-        return; // <-- not sending without key
+        console.info("--- Mock Email ---");
+        console.info(`To: ${payload.to}`);
+        console.info(`Subject: ${payload.subject}`);
+        console.info(`Body: ${payload.body}`);
+        console.info(`Link: ${payload.link}`);
+        console.info("--------------------");
+        return;
     }
 
     try {
+        const emailHtml = `
+            <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                <h2>${payload.subject}</h2>
+                <p>${payload.body}</p>
+                ${payload.link ? `<a href="${payload.link}" style="display: inline-block; padding: 10px 20px; background-color: #7FFFD4; color: #000; text-decoration: none; border-radius: 5px;">View Details</a>` : ''}
+                <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ccc;" />
+                <p style="font-size: 12px; color: #888;">Connections - The easiest way to share rides to the airport.</p>
+            </div>
+        `;
+
         const { data, error } = await resend.emails.send({
             from: fromEmail,
             to: [payload.to],
             subject: payload.subject,
-            react: NotificationEmail({
-                subject: payload.subject,
-                body: payload.body,
-                link: payload.link,
-            }),
+            html: emailHtml,
             text: `${payload.body}\n\nView Details: ${payload.link || 'No link provided.'}`,
         });
 
@@ -43,9 +47,9 @@ export async function sendNotificationEmail(payload: EmailPayload): Promise<void
             throw new Error(`Failed to send email: ${error.message}`);
         }
 
-        console.log("Email sent successfully:", data);
-    } catch (error) {
-        console.error("Error sending notification email:", error);
+        console.info("Email sent successfully", { data });
+    } catch (error: any) {
+        console.error("Error sending notification email:", { error: String(error) });
         throw error;
     }
 }

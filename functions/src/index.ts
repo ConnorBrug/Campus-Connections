@@ -3,7 +3,8 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { FieldValue, Firestore, Timestamp } from 'firebase-admin/firestore';
-import { sendNotificationEmail, type EmailPayload } from './email';
+import { sendNotificationEmail } from '../../src/lib/email'; // Updated import path
+import type { EmailPayload } from '../../src/lib/email'; // Updated import path
 
 admin.initializeApp();
 const db = admin.firestore();
