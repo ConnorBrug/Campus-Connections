@@ -52,7 +52,6 @@ export async function GET(req: Request) {
   let tripsCleaned = 0;
 
   try {
-    // 1) Pending trips in the future
     const pendingSnap = await adminDb.collection("tripRequests").where("status", "==", "pending").get();
     const allPending: TripRequest[] = [];
     pendingSnap.forEach((d) => {
@@ -73,7 +72,6 @@ export async function GET(req: Request) {
       const best = pickBestMatch(current, candidates);
       if (!best) continue;
 
-      // remove chosen from pool
       const idx = pool.findIndex((t) => t.id === best.id);
       if (idx > -1) pool.splice(idx, 1);
 
@@ -115,7 +113,7 @@ export async function GET(req: Request) {
 
     if (matchesFound > 0) await batch.commit();
 
-    // 2) No-match warnings (within 5 hours)
+    // No-match warnings (within 5 hours)
     const now = new Date();
     for (const trip of allPending) {
       const stillPending = pendingIds.has(trip.id) && !matchedIds.has(trip.id);
@@ -135,7 +133,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // 3) Cleanup completed or old trips
+    // Cleanup completed or old trips
     const cleanupBatch = adminDb.batch();
     const oldTripsQuery = adminDb.collection("tripRequests")
       .where("flightDateTime", "<", now.toISOString());
@@ -143,10 +141,10 @@ export async function GET(req: Request) {
 
     oldTripsSnap.forEach((d) => {
       const t = d.data() as TripRequest;
-       if (isPast(addHours(parseISO(t.flightDateTime), 48))) {
-            cleanupBatch.delete(d.ref);
-            tripsCleaned++;
-        }
+      if (isPast(addHours(parseISO(t.flightDateTime), 48))) {
+        cleanupBatch.delete(d.ref);
+        tripsCleaned++;
+      }
     });
 
     if (tripsCleaned > 0) await cleanupBatch.commit();

@@ -1,4 +1,3 @@
-
 import {
   Body,
   Button,
@@ -63,47 +62,47 @@ NotificationEmail.defaultProps = {
 
 export default NotificationEmail;
 
-const main = {
+const main: React.CSSProperties = {
   backgroundColor: '#ffffff',
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif',
 };
 
-const container = {
+const container: React.CSSProperties = {
   margin: '0 auto',
   padding: '20px 0 48px',
 };
 
-const logo = {
+const logo: React.CSSProperties = {
   margin: '0 auto',
 };
 
-const paragraph = {
+const paragraph: React.CSSProperties = {
   fontSize: '16px',
   lineHeight: '26px',
 };
 
-const btnContainer = {
-  textAlign: 'center' as const,
+const btnContainer: React.CSSProperties = {
+  textAlign: 'center',
 };
 
-const button = {
+const button: React.CSSProperties = {
   backgroundColor: '#10b981',
   borderRadius: '3px',
   color: '#fff',
   fontSize: '16px',
   textDecoration: 'none',
-  textAlign: 'center' as const,
+  textAlign: 'center',
   display: 'block',
   padding: '12px',
 };
 
-const hr = {
+const hr: React.CSSProperties = {
   borderColor: '#cccccc',
   margin: '20px 0',
 };
 
-const footer = {
+const footer: React.CSSProperties = {
   color: '#8898aa',
   fontSize: '12px',
 };

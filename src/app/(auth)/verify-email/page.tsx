@@ -1,15 +1,14 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '@/lib/firebase';
-import { sendVerificationEmail } from '@/lib/auth';
+import { sendVerificationEmailAgain } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { MailCheck, Send, Loader2, LogIn, AlertCircle } from 'lucide-react';
+import { MailCheck, Send, Loader2, AlertCircle } from 'lucide-react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 
 export default function VerifyEmailPage() {
@@ -21,34 +20,30 @@ export default function VerifyEmailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        // Reload user to get the latest emailVerified status
-        currentUser.reload().then(() => {
-          if (currentUser.emailVerified) {
-            router.replace('/main');
-          } else {
-            setUser(currentUser);
-            setIsLoading(false);
-          }
-        });
-      } else {
-        // Not logged in, redirect to login
+    // optional localization – already set in auth.ts with useDeviceLanguage()
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
         router.replace('/login');
+        return;
+      }
+      await currentUser.reload();
+      if (currentUser.emailVerified) {
+        router.replace('/main');
+      } else {
+        setUser(currentUser);
+        setIsLoading(false);
       }
     });
-
-    return () => unsubscribe();
+    return () => unsub();
   }, [router]);
 
   const handleResend = async () => {
     if (!user) return;
-
     setIsSending(true);
     setMessage(null);
     setError(null);
     try {
-      await sendVerificationEmail();
+      await sendVerificationEmailAgain();
       setMessage('A new verification email has been sent to your inbox.');
     } catch (err: any) {
       if (err.code === 'auth/too-many-requests') {
@@ -58,6 +53,16 @@ export default function VerifyEmailPage() {
       }
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleIHaveVerified = async () => {
+    if (!auth.currentUser) return;
+    await auth.currentUser.reload();
+    if (auth.currentUser.emailVerified) {
+      router.replace('/main');
+    } else {
+      setError('Still not verified. Please click the link in your email, then try again.');
     }
   };
 
@@ -113,7 +118,7 @@ export default function VerifyEmailPage() {
             After verifying, click the button below to continue to the app.
           </p>
 
-           <Button onClick={() => window.location.reload()} variant="secondary" className="w-full">
+          <Button onClick={handleIHaveVerified} variant="secondary" className="w-full">
             I&apos;ve Verified, Continue
           </Button>
         </CardContent>

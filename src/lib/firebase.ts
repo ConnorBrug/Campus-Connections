@@ -4,7 +4,6 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// You can keep these hardcoded or move to env vars
 const firebaseConfig: FirebaseOptions = {
   projectId: "connections-hw9ha",
   appId: "1:689188733774:web:5dfbbfa493a7d8f2c4141f",

@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -24,6 +23,11 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { auth, db, storage } from "./firebase";
 import type { UserProfile, TripRequest, FlaggedEntry, Match } from "./types";
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from "date-fns";
+
+// If you want localized verification emails:
+auth.useDeviceLanguage(); // or: auth.languageCode = 'it';
+
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
 // ----- Signup -----
 export interface SignupData {
@@ -58,17 +62,20 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
         photoUrl: userData.photoUrl,
         gender: userData.gender,
         dateOfBirth: userData.dateOfBirth,
-        emailVerified: user.emailVerified, // Use initial state from Firebase
+        emailVerified: user.emailVerified,
         isBanned: false,
         ...(userData.campusArea && { campusArea: userData.campusArea }),
       };
       tx.set(userDocRef, profile);
     });
 
-    // Send verification email
-    await sendEmailVerification(user);
+    // Send verification email (with continue URL back to app)
+    await sendEmailVerification(user, {
+      url: `${BASE_URL}/post-verify`, // make this route show a "success" + continue button
+      handleCodeInApp: true,
+    });
 
-    // Create server session
+    // Create server session cookie for SSR (optional but recommended)
     const idToken = await user.getIdToken(true);
     const res = await fetch("/api/session", {
       method: "POST",
@@ -137,19 +144,14 @@ export function getCurrentUser(): Promise<UserProfile | null> {
         unsub();
         if (!user) return resolve(null);
         try {
-          // It's crucial to reload the user to get the latest emailVerified status
           await user.reload();
-          if (!user.emailVerified) {
-             if (window.location.pathname !== '/verify-email') {
-                window.location.href = '/verify-email';
-             }
-             // For verify-email page, we still resolve profile to show email
-             const profile = await getUserProfile(user.uid);
-             resolve(profile);
-          } else {
-             const profile = await getUserProfile(user.uid);
-             resolve(profile);
+          const profile = await getUserProfile(user.uid);
+          if (!user.emailVerified && typeof window !== 'undefined' && window.location.pathname !== '/verify-email') {
+            window.location.href = '/verify-email';
+            // we still resolve profile so verify page can render info
+            return resolve(profile);
           }
+          resolve(profile);
         } catch (e) {
           reject(e);
         }
@@ -193,13 +195,16 @@ export async function sendPasswordReset(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email);
 }
 
-export async function sendVerificationEmail(): Promise<void> {
+export async function sendVerificationEmailAgain(): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error("No user is currently signed in to send verification email.");
-  await sendEmailVerification(user);
+  await sendEmailVerification(user, {
+    url: `${BASE_URL}/post-verify`,
+    handleCodeInApp: true,
+  });
 }
 
-// ----- Trips -----
+// ----- Trips (unchanged interfaces kept for completeness) -----
 export async function saveTripRequest(tripData: Omit<TripRequest, "id" | "createdAt">): Promise<TripRequest> {
   const docRef = doc(collection(db, "tripRequests"));
   const newTrip: TripRequest = { ...tripData, id: docRef.id, createdAt: serverTimestamp() as any };
@@ -309,7 +314,7 @@ export async function updateTripStatus(
   await updateDoc(tripRef, updateData);
 }
 
-// ----- Chat -----
+// ----- Chat / Flags / Deletion (unchanged from yours, omitted for brevity in logic, kept above) -----
 export function getChatId(userId1: string, userId2: string): string {
   return [userId1, userId2].sort().join("_");
 }
@@ -347,7 +352,6 @@ export function listenToTypingStatus(chatId: string, cb: (typingUserId: string |
   return onSnapshot(chatRef, (snap) => cb((snap.data() as any)?.typing || null));
 }
 
-// ----- Flags -----
 export async function getFlaggedUsersForUser(userId: string): Promise<string[]> {
   const user = await getUserProfile(userId);
   return user?.flaggedUserIds || [];
@@ -375,29 +379,17 @@ export async function flagUser(flaggerId: string, flaggedUserId: string, reason:
   await batch.commit();
 }
 
-// --- Account Deletion ---
 export async function deleteCurrentUserAccount(): Promise<void> {
-    const user = auth.currentUser;
-    if (!user) throw new Error("No user is currently signed in.");
-
-    // This operation is sensitive and requires recent authentication.
-    // In a real app, you would force the user to re-enter their password here.
-    // For this example, we assume recent authentication.
-
-    // 1. Call the server API to delete server-side resources
-    const res = await fetch('/api/account/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-        throw new Error(data.message || "Server-side deletion failed.");
-    }
-
-    // 2. Delete the client-side user
-    // Note: The /api/account/delete endpoint ALREADY deletes the auth user via Admin SDK.
-    // So, we just need to sign out on the client.
-    await logout();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is currently signed in.");
+  const res = await fetch('/api/account/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || "Server-side deletion failed.");
+  }
+  await logout();
 }

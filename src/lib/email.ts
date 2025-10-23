@@ -22,7 +22,7 @@ export async function sendNotificationEmail(payload: EmailPayload): Promise<void
         console.log("Body:", payload.body);
         console.log("Link:", payload.link);
         console.log("--------------------");
-        return;
+        return; // <-- not sending without key
     }
 
     try {
@@ -46,8 +46,6 @@ export async function sendNotificationEmail(payload: EmailPayload): Promise<void
         console.log("Email sent successfully:", data);
     } catch (error) {
         console.error("Error sending notification email:", error);
-        // We re-throw so the caller knows the operation failed.
-        // In a production app, you might want to add more robust error handling or retries here.
         throw error;
     }
 }
