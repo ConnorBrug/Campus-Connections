@@ -1,10 +1,11 @@
+
 // functions/src/index.ts
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { FieldValue, Firestore, Timestamp } from 'firebase-admin/firestore';
-import { sendNotificationEmail } from '../../src/lib/email'; // Updated import path
-import type { EmailPayload } from '../../src/lib/email'; // Updated import path
+import { sendNotificationEmail } from '../../src/lib/email'; 
+import type { EmailPayload } from '../../src/lib/email'; 
 
 admin.initializeApp();
 const db = admin.firestore();
