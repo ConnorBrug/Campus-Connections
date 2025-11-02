@@ -20,19 +20,14 @@ export default function VerifyEmailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // optional localization – already set in auth.ts with useDeviceLanguage()
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.replace('/login');
         return;
       }
       await currentUser.reload();
-      if (currentUser.emailVerified) {
-        router.replace('/main');
-      } else {
-        setUser(currentUser);
-        setIsLoading(false);
-      }
+      setUser(currentUser);
+      setIsLoading(false);
     });
     return () => unsub();
   }, [router]);
@@ -44,9 +39,10 @@ export default function VerifyEmailPage() {
     setError(null);
     try {
       await sendVerificationEmailAgain();
-      setMessage('A new verification email has been sent to your inbox.');
+      // on resend success
+      setMessage('A new verification email has been sent. Check your Junk folder!');
     } catch (err: any) {
-      if (err.code === 'auth/too-many-requests') {
+      if (err?.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a few minutes before trying again.');
       } else {
         setError('Failed to send verification email. Please try again.');
@@ -56,19 +52,9 @@ export default function VerifyEmailPage() {
     }
   };
 
-  const handleIHaveVerified = async () => {
-    if (!auth.currentUser) return;
-    await auth.currentUser.reload();
-    if (auth.currentUser.emailVerified) {
-      router.replace('/main');
-    } else {
-      setError('Still not verified. Please click the link in your email, then try again.');
-    }
-  };
-
   if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+      <div className="flex flex-col items-center justify-center bg-background p-4 py-20">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <p className="mt-2 text-muted-foreground">Checking verification status...</p>
       </div>
@@ -76,51 +62,37 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md shadow-xl text-center">
-        <CardHeader>
+    <div className="flex justify-center bg-background p-4 py-20">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
             <MailCheck className="h-12 w-12 text-primary" />
           </div>
           <CardTitle className="text-3xl font-headline">Verify Your Email</CardTitle>
           <CardDescription>
-            A verification link was sent to <strong>{user?.email}</strong>. Please check your inbox and click the link to continue.
+            A verification link was sent to <strong>{user?.email}</strong>. Please check your inbox and click the link to verify your email address.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {message && (
-            <Alert className="text-left">
-              <AlertTitle>Success!</AlertTitle>
-              <AlertDescription>{message}</AlertDescription>
-            </Alert>
-          )}
-          {error && (
-            <Alert variant="destructive" className="text-left">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        {message && (
+          <Alert>
+            <AlertTitle>Success!</AlertTitle>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
           <Button onClick={handleResend} className="w-full" disabled={isSending}>
-            {isSending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-4 w-4" /> Resend Verification Email
-              </>
-            )}
+            {isSending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>)
+                       : (<><Send className="mr-2 h-4 w-4" /> Resend Verification Email</>)}
           </Button>
 
-          <p className="text-sm text-muted-foreground pt-2">
-            After verifying, click the button below to continue to the app.
-          </p>
-
-          <Button onClick={handleIHaveVerified} variant="secondary" className="w-full">
-            I&apos;ve Verified, Continue
-          </Button>
         </CardContent>
         <CardFooter className="flex flex-col items-center space-y-2 pt-6">
           <p className="text-sm text-muted-foreground">

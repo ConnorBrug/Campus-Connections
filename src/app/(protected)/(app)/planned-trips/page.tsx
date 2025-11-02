@@ -145,16 +145,18 @@ export default function PlannedTripsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-8 px-4 md:px-6 flex justify-center items-center min-h-[calc(100vh-10rem)]">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-lg">Loading planned trips...</p>
+      <div className="flex flex-1 items-center justify-center p-4">
+        <div className="flex items-center gap-3 text-lg text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p>Loading planned trips...</p>
+        </div>
       </div>
     );
   }
 
   if (!currentUser) {
     return (
-      <div className="container mx-auto py-8 px-4 md:px-6 flex justify-center items-center min-h-[calc(100vh-10rem)]">
+      <div className="flex flex-1 items-center justify-center p-4">
         <p className="text-lg">Redirecting…</p>
       </div>
     );
@@ -284,7 +286,7 @@ export default function PlannedTripsPage() {
               <p className="text-sm text-muted-foreground">{partner.university}</p>
               {!tripIsInThePast && partnerId ? (
                 <Button size="sm" asChild className="mt-2">
-                  <Link href={`/chat/${partnerId}`}>
+                  <Link href={`/chat/${curMatch.id}`}>
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Chat with {partner.userName.split(' ')[0]}
                   </Link>
@@ -318,30 +320,32 @@ export default function PlannedTripsPage() {
     : false;
 
   return (
-    <div className="container mx-auto py-8 px-4 md:px-6">
-      <Card className="w-full max-w-2xl mx-auto shadow-xl">
-        <CardHeader className="text-center" />
-        <CardContent className="space-y-6">
-          {!activeTrip
-            ? renderNoTrip()
-            : activeTrip.status === 'pending'
-            ? renderPendingTrip(activeTrip)
-            : (activeTrip.status === 'matched' || activeTrip.status === 'completed') && match && matchedPartner
-            ? renderMatchedTrip(activeTrip, match, matchedPartner)
-            : renderNoTrip()}
-        </CardContent>
+    <div className="flex flex-1 items-center justify-center p-4 md:p-6">
+      <div className="w-full max-w-2xl">
+        <Card className="shadow-xl">
+          <CardHeader className="text-center" />
+          <CardContent className="space-y-6">
+            {!activeTrip
+              ? renderNoTrip()
+              : activeTrip.status === 'pending'
+              ? renderPendingTrip(activeTrip)
+              : (activeTrip.status === 'matched' || activeTrip.status === 'completed') && match && matchedPartner
+              ? renderMatchedTrip(activeTrip, match, matchedPartner)
+              : renderNoTrip()}
+          </CardContent>
 
-        {activeTrip && isClient && !tripIsInThePast && (
-          <CardFooter className="flex flex-col items-center justify-center gap-4 pt-6 border-t">
-            <p className="text-sm text-muted-foreground">Change of plans?</p>
-            <Button variant="destructive" onClick={handleCancelTrip} size="sm">
-              <Trash2 className="mr-2 h-4 w-4" /> Cancel Trip
-            </Button>
-          </CardFooter>
-        )}
-      </Card>
+          {activeTrip && isClient && !tripIsInThePast && (
+            <CardFooter className="flex flex-col items-center justify-center gap-4 pt-6 border-t">
+              <p className="text-sm text-muted-foreground">Change of plans?</p>
+              <Button variant="destructive" onClick={handleCancelTrip} size="sm">
+                <Trash2 className="mr-2 h-4 w-4" /> Cancel Trip
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
 
-      {tripIsInThePast && match && matchedPartner && !activeTrip?.userHasBeenFlagged && isClient && renderFlaggingCard()}
+        {tripIsInThePast && match && matchedPartner && !activeTrip?.userHasBeenFlagged && isClient && renderFlaggingCard()}
+      </div>
     </div>
   );
 }

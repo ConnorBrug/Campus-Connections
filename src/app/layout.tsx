@@ -7,6 +7,9 @@ import { Inter, Space_Grotesk } from 'next/font/google';
 export const metadata: Metadata = {
   title: 'Connections',
   description: 'Connect with fellow students for airport rides.',
+  icons: {
+    icon: '/favicon.svg',
+  }
 };
 
 // Setup fonts with next/font

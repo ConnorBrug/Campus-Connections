@@ -1,22 +1,8 @@
-// src/lib/types.ts
+// functions/src/types.ts
 export type MatchPreference = 'Male' | 'Female' | 'No preference';
-export type UserGender = 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // <-- add "Other"
+export type UserGender = 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // include "Other"
 export type TripStatus = 'pending' | 'matched' | 'cancelled' | 'completed';
 export type MatchStatus = 'matched' | 'cancelled' | 'completed';
-
-export interface UserProfile {
-  id: string;
-  name?: string | null;
-  email?: string | null;
-  photoUrl?: string | null;
-  university?: string | null;
-  campusArea?: string | null;
-  gender?: UserGender | null;
-  graduationYear?: number | null;
-  emailVerified?: boolean;
-  flaggedUserIds?: string[];   // <-- used in auth.ts
-  isBanned?: boolean;          // <-- used in auth.ts
-}
 
 export interface TripRequest {
   id: string;
@@ -41,14 +27,13 @@ export interface TripRequest {
   userGender: UserGender;
 
   status: TripStatus;
+  createdAt?: FirebaseFirestore.Timestamp;
   matchId: string | null;
   matchedUserId: string | null;
 
   noMatchWarningSent?: boolean;
   cancellationAlert?: boolean;
   userHasBeenFlagged?: boolean;
-
-  createdAt?: any; // <-- client-side type so serverTimestamp() fits
 }
 
 export interface Match {
@@ -75,20 +60,8 @@ export interface Match {
   reason?: string;
 }
 
-// Align with how flagUser() writes docs in auth.ts
-export interface FlaggedEntry {
-  flaggerId: string;
-  flaggedUserId: string;
-  reason: string;
-  timestamp: any; // Firestore serverTimestamp()
-  // (id is not required here; Firestore doc id is separate)
-}
-
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  text: string;
-  timestamp: any; // Firestore serverTimestamp()
-  senderPhotoUrl?: string | null;
-  senderName?: string | null;
-}
+// Total pair capacity (across both riders).
+export const BAG_CAPACITY = [
+  { checked: 2, carry: 2 },
+  { checked: 3, carry: 1 },
+] as const;

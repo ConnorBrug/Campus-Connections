@@ -17,7 +17,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen">
       <header className="sticky top-0 z-50 w-full border-b bg-primary shadow-sm">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
+        <div className="flex h-16 w-full items-center justify-between px-4 md:px-6">
           <Link href="/" className="flex items-center gap-2 text-2xl font-bold text-primary-foreground">
             <CarFront className="h-8 w-8 text-primary-foreground" />
             <span className="font-headline">Connections</span>

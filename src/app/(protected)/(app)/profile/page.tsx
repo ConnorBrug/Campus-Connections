@@ -5,8 +5,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { useApp } from '@/app/(app)/layout';
-import { uploadProfilePhoto, changePassword } from '@/lib/auth';
+import { useApp } from '@/components/providers/AppClientProvider';
+import { uploadProfilePhoto, changePassword, updateUserProfile } from '@/lib/auth';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -46,13 +46,18 @@ import {
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
+const currentYear = new Date().getFullYear();
+const validYears = [currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(String);
+
 /** SSR-safe File schema (avoids referencing window.File on the server) */
 const FileSchema = typeof window === 'undefined' ? z.any() : z.instanceof(File);
 
 const ProfileFormSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters.'),
-  university: z.enum(['Boston College', 'Vanderbilt'], { required_error: 'University is required.' }),
+  firstName: z.string().min(1, 'First name is required.'),
+  lastName: z.string().min(1, 'Last name is required.'),
   gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say'], { required_error: 'Gender is required.' }),
+  graduationYear: z.string({ required_error: 'Please select your graduation year.' })
+    .refine(val => validYears.includes(val), { message: 'Please select a valid graduation year.' }),
   campusArea: z.string().optional(),
   photo: FileSchema
     .optional()
@@ -106,9 +111,10 @@ export default function ProfilePage() {
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(ProfileFormSchema),
     defaultValues: {
-      name: '',
-      university: 'Boston College',
+      firstName: '',
+      lastName: '',
       gender: 'Prefer not to say',
+      graduationYear: undefined,
       campusArea: '',
       photo: undefined,
     },
@@ -122,10 +128,15 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) {
+      const tokens = (user.name || '').trim().split(/\s+/).filter(Boolean);
+      const firstName = tokens.length > 1 ? tokens.slice(0, -1).join(' ') : tokens[0] || '';
+      const lastName = tokens.length > 1 ? tokens[tokens.length - 1] : '';
+
       profileForm.reset({
-        name: user.name,
-        university: (user.university as 'Boston College' | 'Vanderbilt') ?? 'Boston College',
+        firstName,
+        lastName,
         gender: (user.gender as any) || 'Prefer not to say',
+        graduationYear: user.graduationYear ? String(user.graduationYear) : undefined,
         campusArea: user.campusArea || '',
         photo: undefined,
       });
@@ -134,9 +145,9 @@ export default function ProfilePage() {
     }
   }, [user, profileForm]);
 
-  const watchedUniversity = profileForm.watch('university');
-  const watchedNewPassword = passwordForm.watch('newPassword');
+  const isBC = user?.university === 'Boston College';
 
+  const watchedNewPassword = passwordForm.watch('newPassword');
   const passwordRequirements = useMemo(() => {
     const pass = watchedNewPassword || '';
     return [
@@ -162,15 +173,14 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- Save Profile ----------
   const handleProfileSubmit = async (data: ProfileFormValues) => {
-    let photoUrl: string | undefined;
+    if (!user) return;
 
+    let photoUrl: string | undefined;
     try {
-      // 1) Upload photo (if any)
       if (data.photo && typeof data.photo !== 'string') {
         try {
-          photoUrl = await uploadProfilePhoto(user!.id, data.photo);
+          photoUrl = await uploadProfilePhoto(user.id, data.photo);
         } catch (err: any) {
           console.error('Photo upload failed:', err);
           toast({
@@ -181,27 +191,13 @@ export default function ProfilePage() {
         }
       }
 
-      // 2) PATCH profile JSON
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 15000);
-
-      const res = await fetch('/api/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          name: data.name,
-          university: data.university,
-          gender: data.gender,
-          campusArea: data.university === 'Boston College' ? data.campusArea || '' : '',
-          ...(photoUrl ? { photoUrl } : {}),
-        }),
-        signal: ctrl.signal,
+      await updateUserProfile(user.id, {
+        name: `${data.firstName} ${data.lastName}`.trim(),
+        gender: data.gender,
+        graduationYear: parseInt(data.graduationYear, 10),
+        ...(isBC ? { campusArea: data.campusArea || '' } : { campusArea: '' }),
+        ...(photoUrl ? { photoUrl } : {}),
       });
-      clearTimeout(t);
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || 'Failed to update profile.');
 
       toast({ title: 'Success!', description: 'Profile updated.' });
       await refreshUserProfile();
@@ -216,7 +212,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- Change Password ----------
   const handlePasswordSubmit = async (vals: PasswordFormValues) => {
     try {
       await changePassword(vals.currentPassword, vals.newPassword);
@@ -231,7 +226,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ---------- Delete Account (optional) ----------
   const handleDeleteAccount = async () => {
     try {
       setIsDeleting(true);
@@ -248,32 +242,35 @@ export default function ProfilePage() {
 
   if (isLoading || !user) {
     return (
-      <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <div className="flex flex-1 items-center justify-center p-4">
+        <div className="flex items-center gap-3 text-lg text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p>Loading profile...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 md:px-6">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: summary card */}
+    <div className="flex-1 p-4 md:p-6 lg:p-8">
+      <div className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-8">
           <Card className="shadow-lg">
             <CardHeader className="items-center text-center p-6">
               <Avatar className="h-28 w-28 border-4 border-primary shadow-md">
-                <AvatarImage src={photoPreview || undefined} alt={user.name} />
+                <AvatarImage src={photoPreview || undefined} alt={user.name || ''} />
                 <AvatarFallback className="text-4xl">
-                  {getInitials(user.name)}
+                  {getInitials(user.name || undefined)}
                 </AvatarFallback>
               </Avatar>
               <CardTitle className="text-2xl mt-4 font-headline">{user.name}</CardTitle>
-              <CardDescription className="text-muted-foreground">{user.university}</CardDescription>
+              <CardDescription className="text-muted-foreground">
+                {user.university} - Class of {user.graduationYear}
+              </CardDescription>
             </CardHeader>
           </Card>
         </div>
 
-        {/* Right: forms */}
         <div className="lg:col-span-2 space-y-8">
           <Card className="shadow-lg">
             <CardContent className="p-6">
@@ -288,13 +285,16 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-4 pt-4">
-                      {/* Email (display) */}
                       <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <p className="text-sm text-foreground/90">{user.email}</p>
                       </div>
 
-                      {/* Photo */}
+                      <div className="space-y-2">
+                        <Label>University</Label>
+                        <Input value={user.university ?? ''} readOnly disabled aria-readonly="true" className="bg-muted/50 pointer-events-none" />
+                      </div>
+
                       <FormField
                         control={profileForm.control}
                         name="photo"
@@ -316,44 +316,24 @@ export default function ProfilePage() {
                         )}
                       />
 
-                      {/* Name */}
-                      <FormField
-                        control={profileForm.control}
-                        name="name"
-                        render={({ field }) => (
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <FormField name="firstName" control={profileForm.control} render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Full Name</FormLabel>
-                            <FormControl><Input {...field} /></FormControl>
+                            <FormLabel>First Name</FormLabel>
+                            <FormControl><Input {...field} placeholder="First name" autoComplete="given-name" /></FormControl>
                             <FormMessage />
                           </FormItem>
-                        )}
-                      />
-
-                      {/* University (fixed for this app) */}
-                      <FormField
-                        control={profileForm.control}
-                        name="university"
-                        render={({ field }) => (
+                        )}/>
+                        <FormField name="lastName" control={profileForm.control} render={({ field }) => (
                           <FormItem>
-                            <FormLabel>University</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value} disabled>
-                              <FormControl>
-                                <SelectTrigger id="university">
-                                  <SelectValue placeholder="Select University" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Boston College">Boston College</SelectItem>
-                                <SelectItem value="Vanderbilt">Vanderbilt</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <FormLabel>Last Name</FormLabel>
+                            <FormControl><Input {...field} placeholder="Last name" autoComplete="family-name" /></FormControl>
                             <FormMessage />
                           </FormItem>
-                        )}
-                      />
+                        )}/>
+                      </div>
 
-                      {/* Campus (BC only) */}
-                      {watchedUniversity === 'Boston College' && (
+                      {isBC && (
                         <FormField
                           control={profileForm.control}
                           name="campusArea"
@@ -379,30 +359,50 @@ export default function ProfilePage() {
                         />
                       )}
 
-                      {/* Gender */}
-                      <FormField
-                        control={profileForm.control}
-                        name="gender"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Gender</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger id="gender">
-                                  <SelectValue placeholder="Select gender" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Male">Male</SelectItem>
-                                <SelectItem value="Female">Female</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
-                                <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={profileForm.control}
+                          name="gender"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Gender</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger id="gender">
+                                    <SelectValue placeholder="Select gender" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="Male">Male</SelectItem>
+                                  <SelectItem value="Female">Female</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                  <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={profileForm.control}
+                          name="graduationYear"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Class of...</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {validYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
                     </div>
                   </div>
 
@@ -415,7 +415,6 @@ export default function ProfilePage() {
 
               <Separator className="my-8" />
 
-              {/* Change Password */}
               <div className="space-y-6">
                 <div>
                   <h3 className="text-xl font-headline flex items-center gap-2">
@@ -481,7 +480,6 @@ export default function ProfilePage() {
 
               <Separator className="my-8" />
 
-              {/* Delete account (optional) */}
               <div className="space-y-4">
                 <div>
                   <h3 className="text-xl font-headline flex items-center gap-2 text-destructive">

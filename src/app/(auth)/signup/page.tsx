@@ -1,4 +1,3 @@
-// src/app/(auth)/signup/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -13,14 +12,16 @@ export default async function Page() {
 
   if (session) {
     try {
-      // Verify the session cookie. If it's valid, redirect to main.
       await adminAuth.verifySessionCookie(session, true);
       redirect('/main');
-    } catch (error) {
-      // If the cookie is invalid, let the user proceed to sign up or navigate elsewhere.
+    } catch {
       console.log('Invalid session cookie found, showing signup page.');
     }
   }
 
-  return <SignupClient />;
+  return (
+    <main className="flex flex-col items-center justify-center py-10 px-4">
+      <SignupClient />
+    </main>
+  );
 }

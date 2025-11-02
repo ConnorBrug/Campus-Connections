@@ -11,7 +11,6 @@ import {
   Loader2,
   CarFront,
   Home,
-  TestTube2,
 } from 'lucide-react';
 import { logoutAndRedirectClientSide, getCurrentUser } from '@/lib/auth';
 import type { UserProfile } from '@/lib/types';
@@ -32,20 +31,12 @@ export function Header() {
         if (mounted) setIsLoading(false);
       }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [pathname]);
 
   const handleLogout = async () => {
     setIsLoading(true);
-    try {
-      await logoutAndRedirectClientSide();
-      // no code after this — we redirect inside the helper
-    } catch (err) {
-      console.error('Logout failed:', err);
-      setIsLoading(false);
-    }
+    try { await logoutAndRedirectClientSide(); } catch { setIsLoading(false); }
   };
 
   const Logo = () => (
@@ -58,25 +49,15 @@ export function Header() {
     </Link>
   );
 
-  if (isLoading) {
-    return (
-      <header className="sticky top-0 z-50 w-full border-b bg-primary shadow-sm">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
-          <Logo />
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Loader2 className="h-6 w-6 animate-spin text-primary-foreground/70" />
-          </div>
-        </div>
-      </header>
-    );
-  }
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-primary shadow-sm">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
+      {/* Full-width row, no centered container */}
+      <div className="flex h-16 w-full items-center justify-between px-4 md:px-6">
         <Logo />
         <nav className="flex items-center gap-1 sm:gap-2">
-          {userProfile ? (
+          {isLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-primary-foreground/70" />
+          ) : userProfile ? (
             <>
               <Button
                 variant="ghost"
@@ -90,7 +71,6 @@ export function Header() {
                   <span className="sm:hidden">Home</span>
                 </Link>
               </Button>
-
               <Button
                 variant="ghost"
                 size="sm"
@@ -103,7 +83,6 @@ export function Header() {
                   <span className="sm:hidden">Profile</span>
                 </Link>
               </Button>
-
               <Button
                 variant="ghost"
                 size="sm"
@@ -116,7 +95,6 @@ export function Header() {
                   <span className="sm:hidden">Trips</span>
                 </Link>
               </Button>
-
               <Button
                 variant="ghost"
                 size="sm"

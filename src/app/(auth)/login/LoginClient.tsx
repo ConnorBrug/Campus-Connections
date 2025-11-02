@@ -1,18 +1,24 @@
-
+// src/app/(auth)/login/LoginClient.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, type SVGProps } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login } from '@/lib/auth';
+import { login, loginWithGoogle } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import {
-  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CarFront, LogIn, AlertTriangle, Loader2 } from 'lucide-react';
+
+function GoogleIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M12 11.999h10.5c.1.6.1 1.2.1 1.8 0 6.2-4.2 10.6-10.6 10.6A10.9 10.9 0 0 1 1 13.8c0-6 4.7-10.8 10.7-10.8 2.9 0 5.3 1.1 7 2.9l-3 3c-.8-.8-2-1.7-4-1.7-3.4 0-6.2 2.8-6.2 6.3s2.8 6.3 6.2 6.3c3.9 0 5.4-2.6 5.6-4H12v-4.4z" fill="currentColor"/>
+    </svg>
+  );
+}
 
 export default function LoginClient() {
   const router = useRouter();
@@ -27,14 +33,11 @@ export default function LoginClient() {
     setPageError(null);
     try {
       const { user } = await login(email, password);
-      
       if (!user.emailVerified) {
         router.replace('/verify-email');
       } else {
         router.replace('/main');
       }
-      // On success, we don't set isSubmitting to false,
-      // because we want the loading indicator to show until the redirect is complete.
     } catch (error: any) {
       if (error.code) {
         switch (error.code) {
@@ -55,12 +58,26 @@ export default function LoginClient() {
       } else {
         setPageError(error?.message || 'Login failed. Please check your credentials.');
       }
-      setIsSubmitting(false); // Only set to false on error
+      setIsSubmitting(false);
     }
   };
 
-  // The loading indicator is now the default state when submitting,
-  // preventing the form from reappearing.
+  const handleGoogle = async () => {
+    setIsSubmitting(true);
+    setPageError(null);
+    try {
+      const { profile } = await loginWithGoogle(); // session cookie minted
+      if (!profile?.gender || !profile?.graduationYear) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/main');
+      }
+    } catch (e: any) {
+      setPageError(e?.message || 'Google sign-in failed.');
+      setIsSubmitting(false);
+    }
+  };
+
   if (isSubmitting) {
     return (
       <div className="w-full flex flex-col items-center justify-center py-10">
@@ -87,6 +104,19 @@ export default function LoginClient() {
             <AlertDescription>{pageError}</AlertDescription>
           </Alert>
         )}
+
+        <Button type="button" variant="outline" className="w-full mb-4" onClick={handleGoogle}>
+          <GoogleIcon className="mr-2 h-4 w-4" />
+          Continue with Google
+        </Button>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="on">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>

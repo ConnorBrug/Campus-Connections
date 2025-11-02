@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
 
   // ✅ allow Firebase Studio preview origins (update these to match your logs)
   allowedDevOrigins: [
+    "9002-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
     "https://6000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
     "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
   ],
