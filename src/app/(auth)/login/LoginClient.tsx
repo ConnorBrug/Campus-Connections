@@ -1,4 +1,3 @@
-// src/app/(auth)/login/LoginClient.tsx
 'use client';
 
 import { useState, type SVGProps } from 'react';
@@ -20,6 +19,17 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function profileIsIncomplete(p: any): boolean {
+  if (!p) return true;
+  if (!p.graduationYear) return true;
+  const VALID = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  if (!p.gender || !VALID.includes(p.gender)) return true;
+  if (p.university === 'Boston College' && !p.campusArea) return true;
+  const tokens = (p.name || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return true;
+  return false;
+}
+
 export default function LoginClient() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -32,12 +42,16 @@ export default function LoginClient() {
     setIsSubmitting(true);
     setPageError(null);
     try {
-      const { user } = await login(email, password);
+      const { user, profile } = await login(email, password);
       if (!user.emailVerified) {
         router.replace('/verify-email');
-      } else {
-        router.replace('/main');
+        return;
       }
+      if (profileIsIncomplete(profile)) {
+        router.replace('/onboarding?next=' + encodeURIComponent('/main'));
+        return;
+      }
+      router.replace('/main');
     } catch (error: any) {
       if (error.code) {
         switch (error.code) {
@@ -67,8 +81,8 @@ export default function LoginClient() {
     setPageError(null);
     try {
       const { profile } = await loginWithGoogle(); // session cookie minted
-      if (!profile?.gender || !profile?.graduationYear) {
-        router.replace('/onboarding');
+      if (profileIsIncomplete(profile)) {
+        router.replace('/onboarding?next=' + encodeURIComponent('/main'));
       } else {
         router.replace('/main');
       }
@@ -128,7 +142,6 @@ export default function LoginClient() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              disabled={isSubmitting}
             />
           </div>
           <div className="space-y-2">
@@ -146,10 +159,9 @@ export default function LoginClient() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              disabled={isSubmitting}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button type="submit" className="w-full">
             Login
             <LogIn className="ml-2 h-4 w-4" />
           </Button>

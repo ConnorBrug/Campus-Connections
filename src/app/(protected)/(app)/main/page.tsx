@@ -1,4 +1,3 @@
-// src/app/(app)/main/page.tsx
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -15,7 +14,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 
 import { Loader2, Plane, MessageSquare, User, Building, Mail, GraduationCap, VenetianMask } from 'lucide-react';
-
 
 type InfoRowProps = {
   icon: React.ElementType;
@@ -69,9 +67,11 @@ export default function MainPage() {
       .toUpperCase();
   };
 
+  // Header in protected layout is in-flow and h-16 (4rem).
+  // Use viewport minus header height, then nudge up by 2rem like auth pages.
   if (!user || isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
         <div className="flex items-center gap-3 text-lg text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p>Loading your details...</p>
@@ -89,7 +89,7 @@ export default function MainPage() {
   const safeGraduationYear = user.graduationYear ? `Class of ${user.graduationYear}` : undefined;
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4 md:p-6">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 md:p-6 -mt-8">
       <Card className="w-full max-w-3xl mx-auto shadow-xl">
         <CardHeader className="text-center bg-muted/30 p-6 border-b">
           <div className="flex justify-center mb-4">

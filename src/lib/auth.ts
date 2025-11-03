@@ -173,7 +173,7 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
 
   const result = await signInWithPopup(auth, provider);
   const user = result.user;
-  const email = user.email?.toLowerCase() || '';
+  const email = (user.email ?? '').toLowerCase();
 
   const uni = emailToUniversity(email);
 
@@ -189,7 +189,7 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
   if (!existing.exists()) {
     isNew = true;
 
-    const rawName = normalizeName(user.displayName || email.split('@')[0] || '');
+    const rawName = normalizeName(user.displayName ?? email.split('@')[0] ?? '');
 
     const data = omitUndefined({
       id: user.uid,
@@ -204,18 +204,18 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
 
     // Also update fb auth profile with normalized name
     if (user.displayName !== rawName) {
-        try { await fbUpdateProfile(user, { displayName: rawName }); } catch {}
+      try { await fbUpdateProfile(user, { displayName: rawName }); } catch {}
     }
 
   } else {
     // If user exists, ensure their name is normalized in our system
     const existingData = existing.data() as UserProfile;
-    const normalizedName = normalizeName(existingData.name);
+    const normalizedName = normalizeName(existingData.name ?? '');
     if (normalizedName !== existingData.name) {
-        await updateDoc(userDocRef, { name: normalizedName });
-        if (user.displayName !== normalizedName) {
-            try { await fbUpdateProfile(user, { displayName: normalizedName }); } catch {}
-        }
+      await updateDoc(userDocRef, { name: normalizedName });
+      if (user.displayName !== normalizedName) {
+        try { await fbUpdateProfile(user, { displayName: normalizedName }); } catch {}
+      }
     }
   }
 
@@ -459,7 +459,7 @@ This is an automated message to start your coordination.
   `.trim();
 
   await setDoc(chatRef, { userIds, lastMessage: 'Chat initiated.' }, { merge: true });
-  const msgsRef = collection(db, 'chats', chatId, 'messages');
+  const msgsRef = collection(chatRef, 'chats', chatId, 'messages');
   await addDoc(msgsRef, { text: msg, senderId: 'system', timestamp: serverTimestamp() });
 }
 

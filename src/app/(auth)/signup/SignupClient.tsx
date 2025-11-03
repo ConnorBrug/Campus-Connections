@@ -1,14 +1,10 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import {
-  Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signup, type SignupData, loginWithGoogle } from "@/lib/auth";
@@ -16,9 +12,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { CarFront, AlertTriangle, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  FormField, FormItem, FormControl, FormMessage, Form, FormLabel
-} from "@/components/ui/form";
+import { FormField, FormItem, FormControl, FormMessage, Form, FormLabel } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -87,6 +81,17 @@ function PasswordRequirement({ meets, label }: { meets: boolean; label: string }
       {label}
     </div>
   );
+}
+
+function profileIsIncomplete(p: any): boolean {
+  if (!p) return true;
+  if (!p.graduationYear) return true;
+  const VALID = ['Male', 'Female', 'Other', 'Prefer not to say'];
+  if (!p.gender || !VALID.includes(p.gender)) return true;
+  if (p.university === 'Boston College' && !p.campusArea) return true;
+  const tokens = (p.name || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return true;
+  return false;
 }
 
 export default function SignupClient() {
@@ -182,7 +187,6 @@ export default function SignupClient() {
               </>
             );
             break;
-          // other cases...
           default:
             errorMessage = `Firebase Error: ${error.message}`;
         }
@@ -207,8 +211,8 @@ export default function SignupClient() {
     setPageError(null);
     try {
       const { profile } = await loginWithGoogle();
-      if (!profile?.gender || !profile?.graduationYear) {
-        router.replace('/onboarding');
+      if (profileIsIncomplete(profile)) {
+        router.replace('/onboarding?next=' + encodeURIComponent('/main'));
       } else {
         router.replace('/main');
       }
@@ -229,248 +233,182 @@ export default function SignupClient() {
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-xl my-8">
-        <CardHeader className="text-center">
-          <div className="mb-4 flex justify-center">
-            <CarFront className="h-12 w-12 text-primary" />
-          </div>
-          <CardTitle className="text-3xl font-headline">Create Your Account</CardTitle>
-          <CardDescription>Join Connections to find your ride.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {pageError && (
-            <div className="mb-4 p-3 border border-destructive bg-destructive/10 rounded-md text-destructive text-sm">
-              <div className="flex items-start">
-                <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-                <div>
-                  <span className="font-semibold">Signup Error</span>
-                  <p>{pageError}</p>
-                </div>
+      <CardHeader className="text-center">
+        <div className="mb-4 flex justify-center">
+          <CarFront className="h-12 w-12 text-primary" />
+        </div>
+        <CardTitle className="text-3xl font-headline">Create Your Account</CardTitle>
+        <CardDescription>Join Connections to find your ride.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {pageError && (
+          <div className="mb-4 p-3 border border-destructive bg-destructive/10 rounded-md text-destructive text-sm">
+            <div className="flex items-start">
+              <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="font-semibold">Signup Error</span>
+                <p>{pageError}</p>
               </div>
             </div>
-          )}
-
-          <Button type="button" variant="outline" className="w-full mb-4" onClick={handleGoogleSignup}>
-            <GoogleIcon className="mr-2 h-4 w-4" />
-            Sign up with Google
-          </Button>
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">or</span>
-            </div>
           </div>
+        )}
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="firstName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>First Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="First Name" {...field} autoComplete="given-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lastName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Last Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Last Name" {...field} autoComplete="family-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+        <Button type="button" variant="outline" className="w-full mb-4" onClick={handleGoogleSignup}>
+          <GoogleIcon className="mr-2 h-4 w-4" />
+          Sign up with Google
+        </Button>
 
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>University Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="your.name@university.edu"
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          handleEmailChange(e as unknown as React.ChangeEvent<HTMLInputElement>);
-                        }}
-                        autoComplete="email"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
 
-              <div className="rounded-md border p-3 bg-muted/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">University</p>
-                    <p className="text-sm text-muted-foreground">
-                      {derivedUniversity ? (
-                        <>We'll set your university to <span className="font-medium">{derivedUniversity}</span>.</>
-                      ) : (
-                        <>Enter a valid university email to auto-detect.</>
-                      )}
-                    </p>
-                  </div>
+        {/* form content unchanged */}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField control={form.control} name="firstName" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>First Name</FormLabel>
+                  <FormControl><Input placeholder="First Name" {...field} autoComplete="given-name" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+              <FormField control={form.control} name="lastName" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Last Name</FormLabel>
+                  <FormControl><Input placeholder="Last Name" {...field} autoComplete="family-name" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+            </div>
+
+            <FormField control={form.control} name="email" render={({ field }) => (
+              <FormItem>
+                <FormLabel>University Email</FormLabel>
+                <FormControl>
                   <Input
-                    value={derivedUniversity ?? ''}
-                    readOnly
-                    aria-readonly="true"
-                    placeholder="Auto-detected"
-                    className="w-44 bg-muted/40 text-muted-foreground pointer-events-none"
+                    type="email"
+                    placeholder="your.name@university.edu"
+                    {...field}
+                    onChange={(e) => { field.onChange(e); handleEmailChange(e as unknown as React.ChangeEvent<HTMLInputElement>); }}
+                    autoComplete="email"
                   />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}/>
+
+            <div className="rounded-md border p-3 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">University</p>
+                  <p className="text-sm text-muted-foreground">
+                    {derivedUniversity ? <>We&apos;ll set your university to <span className="font-medium">{derivedUniversity}</span>.</> : <>Enter a valid university email to auto-detect.</>}
+                  </p>
                 </div>
+                <Input value={derivedUniversity ?? ''} readOnly aria-readonly="true" placeholder="Auto-detected" className="w-44 bg-muted/40 text-muted-foreground pointer-events-none" />
               </div>
+            </div>
 
-              {derivedUniversity === 'Boston College' && (
-                <FormField
-                  control={form.control}
-                  name="campusArea"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Boston College Campus Area</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? ''} name="campusArea">
-                        <FormControl>
-                          <SelectTrigger id="campusArea"><SelectValue placeholder="Select BC Campus Area" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="2k">2k</SelectItem>
-                          <SelectItem value="Newton">Newton</SelectItem>
-                          <SelectItem value="CoRo/Upper">CoRo/Upper</SelectItem>
-                          <SelectItem value="Lower">Lower</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+            {derivedUniversity === 'Boston College' && (
+              <FormField control={form.control} name="campusArea" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Boston College Campus Area</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ''} name="campusArea">
+                    <FormControl><SelectTrigger id="campusArea"><SelectValue placeholder="Select BC Campus Area" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="2k">2k</SelectItem>
+                      <SelectItem value="Newton">Newton</SelectItem>
+                      <SelectItem value="CoRo/Upper">CoRo/Upper</SelectItem>
+                      <SelectItem value="Lower">Lower</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+            )}
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="graduationYear"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Class of...</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} name="graduationYear">
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select Graduation Year" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {validYears.map(year => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="gender"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Gender</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} name="gender">
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                          <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField control={form.control} name="graduationYear" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Class of...</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} name="graduationYear">
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select Graduation Year" /></SelectTrigger></FormControl>
+                    <SelectContent>{validYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+              <FormField control={form.control} name="gender" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Gender</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} name="gender">
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+            </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Confirm Password</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField control={form.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+              <FormField control={form.control} name="confirmPassword" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm Password</FormLabel>
+                  <FormControl><Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}/>
+            </div>
 
-              <div className="space-y-1 rounded-md border p-3 shadow-sm">
-                {passwordRequirements.map((req, i) => <PasswordRequirement key={i} meets={req.meets} label={req.label} />)}
-              </div>
+            <div className="space-y-1 rounded-md border p-3 shadow-sm">
+              {passwordRequirements.map((req, i) => <PasswordRequirement key={i} meets={req.meets} label={req.label} />)}
+            </div>
 
-              <FormField
-                control={form.control}
-                name="agreeToTerms"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
-                    <FormControl>
-                      <Checkbox checked={!!field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} id="agreeToTerms" />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <Label htmlFor="agreeToTerms" className="text-sm font-normal text-muted-foreground">
-                        I agree to the Connections{' '}
-                        <Link href="/terms-of-service" className="underline hover:text-primary" target="_blank">Terms of Service</Link>
-                        {' '}&{' '}
-                        <Link href="/privacy-policy" className="underline hover:text-primary" target="_blank">Privacy Policy</Link>.
-                      </Label>
-                      <FormMessage />
-                    </div>
-                  </FormItem>
-                )}
-              />
+            <FormField control={form.control} name="agreeToTerms" render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                <FormControl><Checkbox checked={!!field.value} onCheckedChange={(v) => field.onChange(Boolean(v))} id="agreeToTerms" /></FormControl>
+                <div className="space-y-1 leading-none">
+                  <Label htmlFor="agreeToTerms" className="text-sm font-normal text-muted-foreground">
+                    I agree to the Connections{' '}
+                    <Link href="/terms-of-service" className="underline hover:text-primary" target="_blank">Terms of Service</Link>
+                    {' '}&{' '}
+                    <Link href="/privacy-policy" className="underline hover:text-primary" target="_blank">Privacy Policy</Link>.
+                  </Label>
+                  <FormMessage />
+                </div>
+              </FormItem>
+            )}/>
 
-              <Button type="submit" className="w-full" disabled={!form.formState.isValid || isLoading}>
-                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing Up...</> : "Sign Up"}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-        <CardFooter className="flex flex-col items-center pt-2">
-          <p className="text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/login" className="font-medium text-primary hover:underline" prefetch={false}>
-              Log in
-            </Link>
-          </p>
-        </CardFooter>
-      </Card>
+            <Button type="submit" className="w-full" disabled={!form.formState.isValid || isLoading}>
+              {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing Up...</> : "Sign Up"}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+      <CardFooter className="flex flex-col items-center pt-2">
+        <p className="text-sm text-muted-foreground">
+          Already have an account?{' '}
+          <Link href="/login" className="font-medium text-primary hover:underline" prefetch={false}>
+            Log in
+          </Link>
+        </p>
+      </CardFooter>
+    </Card>
   );
 }

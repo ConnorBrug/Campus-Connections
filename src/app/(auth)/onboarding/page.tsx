@@ -6,23 +6,16 @@ import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
-import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter
-} from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem
-} from '@/components/ui/select';
-import {
-  Form, FormField, FormItem, FormLabel, FormControl, FormMessage
-} from '@/components/ui/form';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Loader2, UserCheck, AlertTriangle } from 'lucide-react';
 
 import { getCurrentUser, updateUserProfile } from '@/lib/auth';
 import type { UserProfile } from '@/lib/types';
 import { normalizeName } from '@/lib/utils';
-import { useApp } from '@/components/providers/AppClientProvider';
 
 const currentYear = new Date().getFullYear();
 const validYears = [currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(String);
@@ -32,14 +25,12 @@ const Schema = z.object({
   lastName: z.string().min(1, 'Last name is required.'),
   gender: z.enum(['Male', 'Female', 'Other', 'Prefer not to say'], { required_error: 'Please select your gender.' }),
   graduationYear: z.string({ required_error: 'Please select your graduation year.' })
-    .refine(val => validYears.includes(val), { message: 'Please select a valid graduation year.' }),
+    .refine(v => validYears.includes(v), { message: 'Please select a valid graduation year.' }),
   campusArea: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof Schema>;
-
-const toUndef = <T,>(v: T | null | undefined): T | undefined =>
-  (v === null || v === undefined ? undefined : v);
+const toUndef = <T,>(v: T | null | undefined): T | undefined => (v == null ? undefined : v);
 
 function splitNameSmart(full?: string | null) {
   const normalized = normalizeName(full || '');
@@ -51,7 +42,6 @@ function splitNameSmart(full?: string | null) {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { refreshUserProfile } = useApp();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,13 +50,7 @@ export default function OnboardingPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(Schema),
     mode: 'onChange',
-    defaultValues: {
-      firstName: '',
-      lastName: '',
-      gender: undefined,
-      graduationYear: undefined,
-      campusArea: undefined,
-    },
+    defaultValues: { firstName: '', lastName: '', gender: undefined, graduationYear: undefined, campusArea: undefined },
   });
 
   useEffect(() => {
@@ -74,30 +58,15 @@ export default function OnboardingPage() {
       try {
         const me = await getCurrentUser();
         if (!me) return router.replace('/login');
-
         setProfile(me);
 
         const { first, last } = splitNameSmart(me.name);
-
-        const allowedGenders = ['Male', 'Female', 'Other', 'Prefer not to say'] as const;
-        const gender = allowedGenders.includes(me.gender as any)
-          ? (me.gender as FormValues['gender'])
-          : undefined;
-
+        const allowed = ['Male', 'Female', 'Other', 'Prefer not to say'] as const;
+        const gender = allowed.includes(me.gender as any) ? (me.gender as FormValues['gender']) : undefined;
         const gradYear = me.graduationYear ? String(me.graduationYear) : undefined;
+        const campus = me.university === 'Boston College' ? toUndef(me.campusArea) : undefined;
 
-        const campus =
-          me.university === 'Boston College'
-            ? toUndef(me.campusArea)
-            : undefined;
-
-        form.reset({
-          firstName: first,
-          lastName: last,
-          gender,
-          graduationYear: gradYear,
-          campusArea: campus,
-        });
+        form.reset({ firstName: first, lastName: last, gender, graduationYear: gradYear, campusArea: campus });
       } catch (e: any) {
         setError(e?.message || 'Failed to load your profile.');
       } finally {
@@ -122,7 +91,7 @@ export default function OnboardingPage() {
 
     try {
       const normalizedFullName = normalizeName(`${values.firstName} ${values.lastName}`);
-      
+
       await updateUserProfile(profile.id, {
         name: normalizedFullName,
         gender: values.gender,
@@ -130,9 +99,8 @@ export default function OnboardingPage() {
         ...(showCampus ? { campusArea: values.campusArea } : {}),
       });
 
-      await refreshUserProfile();
-      router.replace('/main');
-
+      const next = new URLSearchParams(window.location.search).get('next') || '/main';
+      router.replace(next);
     } catch (e: any) {
       setError(e?.message || 'Could not save your information.');
       setSaving(false);
@@ -202,11 +170,9 @@ export default function OnboardingPage() {
                   <FormItem>
                     <FormLabel>Class of...</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select Graduation Year" /></SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select Graduation Year" /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {validYears.map(year => <SelectItem key={year} value={year}>{year}</SelectItem>)}
+                        {validYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -216,9 +182,7 @@ export default function OnboardingPage() {
                   <FormItem>
                     <FormLabel>Gender</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="Male">Male</SelectItem>
                         <SelectItem value="Female">Female</SelectItem>
@@ -231,14 +195,12 @@ export default function OnboardingPage() {
                 )}/>
               </div>
 
-              {showCampus && (
+              {profile?.university === 'Boston College' && (
                 <FormField name="campusArea" control={form.control} render={({ field }) => (
                   <FormItem>
                     <FormLabel>Boston College Campus Area</FormLabel>
                     <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select BC Campus Area" /></SelectTrigger>
-                      </FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select BC Campus Area" /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="2k">2k</SelectItem>
                         <SelectItem value="Newton">Newton</SelectItem>

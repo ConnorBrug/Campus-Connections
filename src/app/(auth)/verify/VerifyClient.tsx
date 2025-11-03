@@ -29,8 +29,6 @@ export default function VerifyClient() {
     try {
       await applyActionCode(auth, oobCode);
       setStatus('success');
-      // Optionally, sign the user in and redirect.
-      // For now, just show a success message and a link to log in.
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/invalid-action-code') {
@@ -50,10 +48,10 @@ export default function VerifyClient() {
             <ShieldCheck className="h-12 w-12 text-green-500" />
           </div>
           <CardTitle className="text-3xl font-headline">Email Verified!</CardTitle>
-          <CardDescription>Your email has been successfully verified.</CardDescription>
+          <CardDescription>Your email is confirmed. You may now close this browser tab.</CardDescription>
         </CardHeader>
         <CardContent className="text-center">
-          <Button onClick={() => router.push('/login')}>Proceed to Login</Button>
+          <Button onClick={() => window.close()}>Close Tab</Button>
         </CardContent>
       </Card>
     );

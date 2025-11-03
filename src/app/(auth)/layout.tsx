@@ -1,4 +1,3 @@
-
 'use client';
 
 import { CarFront } from 'lucide-react';
@@ -19,8 +18,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen w-full flex-col">
       <AuthHeader />
+      {/* keep top padding so nothing hides under the absolute header */}
       <main className="flex flex-1 items-center justify-center p-4 pt-16">
-        {children}
+        {/* pull content up by half the header height (h-16 -> 4rem -> half = 2rem = mt-8) */}
+        <div className="-mt-8 w-full flex items-center justify-center">
+          {children}
+        </div>
       </main>
     </div>
   );

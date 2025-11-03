@@ -40,7 +40,7 @@ export default function VerifyEmailPage() {
     try {
       await sendVerificationEmailAgain();
       // on resend success
-      setMessage('A new verification email has been sent. Check your Junk folder!');
+      setMessage('A new verification email has been sent.');
     } catch (err: any) {
       if (err?.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a few minutes before trying again.');

@@ -24,6 +24,12 @@ import { format, parse, parseISO, isPast } from 'date-fns';
 import { getCurrentUser, getActiveTripForUser, getMatchById, flagUser } from '@/lib/auth';
 import type { UserProfile, TripRequest, Match } from '@/lib/types';
 
+/* ---------- small helpers to keep TS happy and avoid invalid dates ---------- */
+const fmtIsoTime = (iso?: string) => (iso ? format(parseISO(iso), 'p') : 'TBD');
+const fmtYmdDate = (ymd?: string) => (ymd ? format(parse(ymd, 'yyyy-MM-dd', new Date()), 'PPP') : 'TBD');
+const initials = (name?: string | null) =>
+  (name ? name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase() : 'U');
+
 export default function PlannedTripsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -138,14 +144,9 @@ export default function PlannedTripsPage() {
     }
   };
 
-  const getInitials = (name?: string) => {
-    if (!name) return 'U';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase();
-  };
-
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
         <div className="flex items-center gap-3 text-lg text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p>Loading planned trips...</p>
@@ -156,7 +157,7 @@ export default function PlannedTripsPage() {
 
   if (!currentUser) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
         <p className="text-lg">Redirecting…</p>
       </div>
     );
@@ -192,14 +193,13 @@ export default function PlannedTripsPage() {
         )}
         {trip.flightDate && (
           <p className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong>{' '}
-            {format(parse(trip.flightDate, 'yyyy-MM-dd', new Date()), 'PPP')}
+            <CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong> {fmtYmdDate(trip.flightDate)}
           </p>
         )}
-        {trip.flightTime && (
+        {(trip.flightTime || trip.flightDateTime) && (
           <p className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-primary" /> <strong>Boarding Time:</strong>{' '}
-            {format(parseISO(trip.flightDateTime), 'p')}
+            {trip.flightDateTime ? fmtIsoTime(trip.flightDateTime) : (trip.flightTime ?? 'TBD')}
           </p>
         )}
         {trip.departingAirport && (
@@ -260,7 +260,7 @@ export default function PlannedTripsPage() {
 
   const renderMatchedTrip = (trip: TripRequest, curMatch: Match, partner: any) => {
     if (!isClient) return null;
-    const tripIsInThePast = curMatch.status === 'completed' || isPast(parseISO(trip.flightDateTime));
+    const tripIsInThePast = curMatch.status === 'completed' || (trip.flightDateTime ? isPast(parseISO(trip.flightDateTime)) : false);
     const partnerId = curMatch.participantIds.find((id) => id !== currentUser!.id);
 
     return (
@@ -271,24 +271,24 @@ export default function PlannedTripsPage() {
         </CardTitle>
         <CardDescription className="text-center text-lg">
           {tripIsInThePast
-            ? `This trip with ${partner.userName} is now complete.`
-            : `You've been matched with ${partner.userName} for your trip.`}
+            ? `This trip with ${partner?.userName ?? 'your partner'} is now complete.`
+            : `You've been matched with ${partner?.userName ?? 'your partner'} for your trip.`}
         </CardDescription>
 
         <div className="p-4 border rounded-md bg-muted/30 shadow-inner space-y-4">
           <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
             <Avatar className="h-20 w-20 border-2 border-primary">
-              <AvatarImage src={partner.userPhotoUrl || ''} alt={partner.userName} data-ai-hint="person avatar" />
-              <AvatarFallback>{getInitials(partner.userName)}</AvatarFallback>
+              <AvatarImage src={partner?.userPhotoUrl || ''} alt={partner?.userName ?? 'Partner'} data-ai-hint="person avatar" />
+              <AvatarFallback>{initials(partner?.userName)}</AvatarFallback>
             </Avatar>
             <div>
-              <h3 className="text-xl font-bold">{partner.userName}</h3>
-              <p className="text-sm text-muted-foreground">{partner.university}</p>
+              <h3 className="text-xl font-bold">{partner?.userName ?? 'Partner'}</h3>
+              <p className="text-sm text-muted-foreground">{partner?.university ?? ''}</p>
               {!tripIsInThePast && partnerId ? (
                 <Button size="sm" asChild className="mt-2">
                   <Link href={`/chat/${curMatch.id}`}>
                     <MessageSquare className="mr-2 h-4 w-4" />
-                    Chat with {partner.userName.split(' ')[0]}
+                    Chat with {(partner?.userName ?? 'Partner').split(' ')[0]}
                   </Link>
                 </Button>
               ) : (
@@ -301,12 +301,12 @@ export default function PlannedTripsPage() {
             <h4 className="font-semibold text-lg mb-2">Shared Trip Details</h4>
             <div className="space-y-1 text-sm text-foreground/80">
               <p className="flex items-center gap-2">
-                <Plane className="h-4 w-4 text-primary" /> <strong>Partner&apos;s Flight:</strong> {partner.flightCode} at{' '}
-                {format(parseISO(partner.flightDateTime), 'p')}
+                <Plane className="h-4 w-4 text-primary" /> <strong>Partner&apos;s Flight:</strong>{' '}
+                {(partner?.flightCode ?? '—')} at {fmtIsoTime(partner?.flightDateTime)}
               </p>
               <p className="flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong>{' '}
-                {format(parse(trip.flightDate, 'yyyy-MM-dd', new Date()), 'PPP')}
+                {fmtYmdDate(trip?.flightDate)}
               </p>
             </div>
           </div>
@@ -316,11 +316,11 @@ export default function PlannedTripsPage() {
   };
 
   const tripIsInThePast = activeTrip && isClient && match
-    ? match.status === 'completed' || isPast(parseISO(activeTrip.flightDateTime))
+    ? match.status === 'completed' || (activeTrip.flightDateTime ? isPast(parseISO(activeTrip.flightDateTime)) : false)
     : false;
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4 md:p-6">
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 md:p-6 -mt-8">
       <div className="w-full max-w-2xl">
         <Card className="shadow-xl">
           <CardHeader className="text-center" />
