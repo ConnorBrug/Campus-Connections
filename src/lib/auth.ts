@@ -37,8 +37,30 @@ const getBaseUrl = () => {
 };
 const getVerificationActionUrl = () => `${getBaseUrl()}/verify`;
 
+/* ------------------------- whitelist + email checks ------------------------- */
+
+// --- Whitelisted email exceptions (non-university domains allowed) ---
+const EMAIL_WHITELIST = new Set<string>([
+  'connorbrugger@gmail.com',
+  'michaelrazavi2@gmail.com',
+]);
+
+const isWhitelisted = (email: string): boolean =>
+  EMAIL_WHITELIST.has((email || '').toLowerCase());
+
+const isAllowedEmail = (email: string): boolean =>
+  Boolean(emailToUniversity(email) || isWhitelisted(email));
+
+/**
+ * Maps an email to a university label if it matches a known domain.
+ * Also allows explicit whitelist overrides by returning "Whitelisted".
+ */
 const emailToUniversity = (email: string): string | null => {
-  const e = email.toLowerCase();
+  const e = (email || '').toLowerCase();
+
+  // ✅ explicit bypass for non-university domains
+  if (isWhitelisted(e)) return 'Whitelisted';
+
   if (e.endsWith('@bc.edu')) return 'Boston College';
   if (e.endsWith('@vanderbilt.edu')) return 'Vanderbilt';
   if (process.env.NODE_ENV === 'development' && e.endsWith('@gmail.com')) {
@@ -64,6 +86,11 @@ export interface SignupData {
 }
 
 export async function signup(userData: SignupData): Promise<FirebaseUser> {
+  // Enforce university domain OR whitelist at sign-up
+  if (!isAllowedEmail(userData.email)) {
+    throw new Error('Please sign up with a valid university email. (This account is not on the exception list.)');
+  }
+
   await setPersistence(auth, browserLocalPersistence);
 
   // ✅ nuke any stale server cookie so SSR can’t think you’re logged in
@@ -85,7 +112,7 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
         id: user.uid,
         name: normalizedName,
         email: userData.email,
-        university: userData.university,
+        university: userData.university, // UI-provided; can be "Whitelisted" if you choose to set it client-side
         photoUrl: userData.photoUrl,
         gender: userData.gender,
         graduationYear: userData.graduationYear,
@@ -123,6 +150,12 @@ export async function signup(userData: SignupData): Promise<FirebaseUser> {
 export async function login(email: string, passwordInput: string): Promise<{ profile: UserProfile; user: FirebaseUser }> {
   await setPersistence(auth, browserLocalPersistence);
   const { user } = await signInWithEmailAndPassword(auth, email.trim(), passwordInput);
+
+  // Block non-university logins unless explicitly whitelisted
+  if (!isAllowedEmail(user.email ?? '')) {
+    await signOut(auth);
+    throw new Error('Please sign in with a valid university email. (This account is not on the exception list.)');
+  }
 
   if (user.emailVerified) {
     // ✅ Only verified users get an SSR cookie
@@ -175,11 +208,11 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
   const user = result.user;
   const email = (user.email ?? '').toLowerCase();
 
-  const uni = emailToUniversity(email);
+  const uni = emailToUniversity(email); // returns 'Whitelisted' for allowed exceptions
 
   if (!uni) {
     await signOut(auth);
-    throw new Error('Please sign in with a valid university email (e.g., @bc.edu, @vanderbilt.edu) or a Google account for testing in development.');
+    throw new Error('Please sign in with a valid university email (e.g., @bc.edu, @vanderbilt.edu).');
   }
 
   const userDocRef = doc(db, 'users', user.uid);
@@ -195,9 +228,9 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
       id: user.uid,
       name: rawName,
       email,
-      university: uni,
+      university: uni,               // <-- may be 'Whitelisted'
       photoUrl: user.photoURL || undefined,
-      emailVerified: true, // Google provider is verified
+      emailVerified: true,           // Google provider is verified
       isBanned: false,
     });
     await setDoc(userDocRef, data as UserProfile, { merge: true });
