@@ -15,6 +15,7 @@ export default function VerifyClient() {
 
   const [status, setStatus] = useState('idle'); // idle | verifying | success | error
   const [error, setError] = useState<string | null>(null);
+  const [nextPath, setNextPath] = useState<string | null>(null);
 
   const handleVerify = async () => {
     if (!oobCode) {
@@ -28,10 +29,30 @@ export default function VerifyClient() {
 
     try {
       await applyActionCode(auth, oobCode);
+
+      // If the user is currently signed in on this browser, create SSR session cookie
+      // so they can proceed without logging in again.
+      const current = auth.currentUser;
+      if (current) {
+        await current.reload();
+        if (current.emailVerified) {
+          const idToken = await current.getIdToken(true);
+          const res = await fetch('/api/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ idToken }),
+          });
+          if (res.ok) {
+            setNextPath('/onboarding?next=' + encodeURIComponent('/main'));
+          }
+        }
+      }
+
       setStatus('success');
-    } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/invalid-action-code') {
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'auth/invalid-action-code') {
         setError('This verification link is invalid or has expired. It might have already been used. Please request a new one.');
       } else {
         setError('An unexpected error occurred. Please try again.');
@@ -48,10 +69,17 @@ export default function VerifyClient() {
             <ShieldCheck className="h-12 w-12 text-green-500" />
           </div>
           <CardTitle className="text-3xl font-headline">Email Verified!</CardTitle>
-          <CardDescription>Your email is confirmed. You may now close this browser tab.</CardDescription>
+          <CardDescription>
+            Your email is confirmed.
+            {nextPath ? ' Continue below to enter the app.' : ' You can now log in to get started.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
-          <Button onClick={() => window.close()}>Close Tab</Button>
+          {nextPath ? (
+            <Button onClick={() => router.replace(nextPath)}>Continue</Button>
+          ) : (
+            <Button onClick={() => router.replace('/login')}>Go to Log In</Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -69,7 +97,7 @@ export default function VerifyClient() {
         </CardHeader>
         <CardContent className="text-center">
           <Button onClick={() => router.push('/login')} variant="secondary">
-            Back to Login
+            Back to Log In
           </Button>
         </CardContent>
       </Card>
@@ -79,7 +107,7 @@ export default function VerifyClient() {
   return (
     <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-headline">Confirm Your Email</CardTitle>
+        <CardTitle className="text-3xl font-headline">Verify Your Email</CardTitle>
         <CardDescription>Click the button below to complete your email verification.</CardDescription>
       </CardHeader>
       <CardContent>

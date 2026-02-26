@@ -180,8 +180,7 @@ export async function submitTripDetailsAction(
 
     revalidatePath('/dashboard');
     redirect('/trip-submitted');
-  } catch (error: any) {
-    console.error('submitTripDetailsAction error:', error);
+  } catch {
     return {
       success: false,
       message: 'An unexpected error occurred. Please try again.',
@@ -213,16 +212,17 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
     }
 
     return trip;
-  } catch (error: any) {
-    console.error('Error in getActiveTripForUser:', error);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    const code = (error as { code?: number })?.code;
     if (
-      error.code === 5 ||
-      error.message?.includes('NOT_FOUND') ||
-      error.message?.includes('Could not refresh access token')
+      code === 5 ||
+      msg.includes('NOT_FOUND') ||
+      msg.includes('Could not refresh access token')
     ) {
       return null;
     }
-    throw new Error(error.message || 'Failed to fetch active trip. Please try again later.');
+    throw new Error(msg || 'Failed to fetch active trip. Please try again later.');
   }
 }
 
@@ -275,9 +275,8 @@ export async function cancelTripAction(
     revalidatePath('/dashboard');
     revalidatePath('/planned-trips');
 
-    return { success: true, message: 'Your trip has been cancelled.' };
-  } catch (error) {
-    console.error('Error cancelling trip:', error);
+    return { success: true, message: 'Your trip has been canceled.' };
+  } catch {
     return { success: false, message: 'Failed to cancel the trip.' };
   }
 }
@@ -321,13 +320,11 @@ export async function changePasswordAction(
   try {
     await changePassword(currentPassword, newPassword);
     return { message: 'Your password has been changed successfully. You will be logged out.' };
-  } catch (error: any) {
-    let errorMessage = 'An unexpected error occurred.';
-    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-      errorMessage = 'The current password you entered is incorrect.';
-    } else {
-      errorMessage = 'Failed to change password. Please try again.';
-    }
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    const errorMessage = (code === 'auth/wrong-password' || code === 'auth/invalid-credential')
+      ? 'The current password you entered is incorrect.'
+      : 'Failed to change password. Please try again.';
     return { errors: { _form: [errorMessage] } };
   }
 }
@@ -338,11 +335,10 @@ export async function deleteAccountAction(): Promise<{ success: boolean; message
   try {
     await deleteCurrentUserAccount();
     return { success: true, message: 'Account deleted successfully.' };
-  } catch (error: any) {
-    console.error('Delete account error:', error);
+  } catch (error) {
     return {
       success: false,
-      message: error.message || 'An unexpected error occurred while deleting your account.',
+      message: error instanceof Error ? error.message : 'An unexpected error occurred while deleting your account.',
     };
   }
 }

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Plane, Trash2, UserCheck, BellRing, Frown, Home } from 'lucide-react';
+import { Loader2, Plane, Trash2, UserCheck, BellRing, Frown, Home, PackageOpen, Users } from 'lucide-react';
 
 import { TripDetailsForm } from '@/components/dashboard/TripDetailsForm';
 import { CostEstimator } from '@/components/dashboard/CostEstimator';
@@ -37,8 +37,7 @@ export default function DashboardPage() {
       try {
         const trip = await getActiveTripForUser(currentUser.id);
         setActiveTrip(trip);
-      } catch (e) {
-        console.error('Failed loading active trip:', e);
+      } catch {
         toast({
           title: 'Error Loading Trip',
           description: 'Could not load your active trip. Please try again later.',
@@ -64,8 +63,8 @@ export default function DashboardPage() {
         if (!res.ok) throw new Error(data?.message || 'Failed to cancel trip.');
         toast({ title: 'Trip Canceled', description: data.message ?? 'Your trip has been canceled.' });
         setActiveTrip(null);
-      } catch (e: any) {
-        toast({ title: 'Error', description: e.message ?? 'Could not cancel trip.', variant: 'destructive' });
+      } catch (e) {
+        toast({ title: 'Error', description: e instanceof Error ? e.message : 'Could not cancel trip.', variant: 'destructive' });
       }
     });
   };
@@ -87,7 +86,7 @@ export default function DashboardPage() {
         <Home className="h-10 w-10 mb-2 text-primary" />
         <p className="text-lg">Redirecting to login…</p>
         <Button asChild className="mt-3">
-          <Link href="/login">Go to Login</Link>
+          <Link href="/login">Go to Log In</Link>
         </Button>
       </div>
     );
@@ -116,11 +115,22 @@ export default function DashboardPage() {
         )}
 
         {activeTrip?.noMatchWarningSent && (
-          <Alert className="mb-6 shadow-md border-yellow-500 bg-yellow-500/10">
-            <Frown className="h-4 w-4 text-yellow-500" />
-            <AlertTitle className="font-semibold text-yellow-700">No Match Found</AlertTitle>
+            <Alert className="mb-6 shadow-md border-yellow-500 bg-yellow-500/10">
+              <Frown className="h-4 w-4 text-yellow-500" />
+              <AlertTitle className="font-semibold text-yellow-700">No Match Found</AlertTitle>
+              <AlertDescription>
+                We thank you for giving us the chance to help you find a match, and we wish you all the best.
+                We couldn&apos;t find a match for your upcoming trip, so please consider arranging alternative transportation.
+              </AlertDescription>
+            </Alert>
+          )}
+
+        {activeTrip?.xlRideSuggested && (
+          <Alert className="mb-6 shadow-md border-blue-500 bg-blue-500/10">
+            <PackageOpen className="h-4 w-4 text-blue-500" />
+            <AlertTitle className="font-semibold text-blue-700">XL Ride Suggested</AlertTitle>
             <AlertDescription>
-              We couldn&apos;t find a match for your upcoming trip. Consider arranging alternative transportation.
+              Your combined luggage might need an XL ride. Consider booking an XL vehicle for extra space.
             </AlertDescription>
           </Alert>
         )}
@@ -140,7 +150,8 @@ export default function DashboardPage() {
                 <CardContent>
                   <TripDetailsForm
                     userId={currentUser.id}
-                    userUniversity={currentUser.university || undefined}                  isTripPending={!!activeTrip}
+                    userUniversity={currentUser.university || undefined}
+                    isTripPending={!!activeTrip}
                   />
                   <CostEstimator />
                 </CardContent>
@@ -183,6 +194,22 @@ export default function DashboardPage() {
                       <Trash2 className="mr-2 h-4 w-4" /> Cancel Trip
                     </Button>
                   </div>
+
+                  {activeTrip!.status === 'pending' && (
+                    <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/50 p-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Low-demand period?</p>
+                        <p className="text-xs text-muted-foreground">
+                          During low-demand periods, you can browse manual ride posts and pick a rider directly.
+                        </p>
+                      </div>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href="/manual-rides">
+                          <Users className="mr-2 h-4 w-4" /> Ride Posts
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

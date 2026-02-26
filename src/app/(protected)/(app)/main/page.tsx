@@ -48,8 +48,8 @@ export default function MainPage() {
       try {
         const trip = await getActiveTripForUser(user.id);
         setActiveTrip(trip);
-      } catch (error) {
-        console.error('Error fetching data for main page:', error);
+      } catch {
+        // Trip fetch failed — show empty state
       } finally {
         setIsLoading(false);
       }
@@ -85,7 +85,7 @@ export default function MainPage() {
   const safeEmail = user.email ?? undefined;
   const safeUniversity = user.university ?? undefined;
   const safeCampusArea = user.campusArea ?? undefined;
-  const safeGender = (user as any)?.gender ?? undefined;
+  const safeGender = user.gender ?? undefined;
   const safeGraduationYear = user.graduationYear ? `Class of ${user.graduationYear}` : undefined;
 
   return (

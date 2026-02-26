@@ -34,11 +34,23 @@ export interface TripRequest {
   noMatchWarningSent?: boolean;
   cancellationAlert?: boolean;
   userHasBeenFlagged?: boolean;
+
+  xlRideSuggested?: boolean;
+  fallbackTier?: string;
+  flightDelayed?: boolean;
 }
+
+export type MatchTier =
+  | 'standard'
+  | 'group'
+  | 'relaxed-campus'
+  | 'relaxed-time'
+  | 'relaxed-gender'
+  | 'xl-suggested';
 
 export interface Match {
   id: string;
-  participantIds: [string, string];
+  participantIds: string[];
   participants: Record<
     string,
     {
@@ -50,7 +62,7 @@ export interface Match {
       flightDateTime: string;
     }
   >;
-  requestIds: [string, string];
+  requestIds: string[];
   university: string;
   campusArea: string | null;
   departingAirport: string;
@@ -58,10 +70,17 @@ export interface Match {
   assignedAtISO: string;
   status: MatchStatus;
   reason?: string;
+  matchTier?: MatchTier;
 }
 
 // Total pair capacity (across both riders).
 export const BAG_CAPACITY = [
   { checked: 2, carry: 2 },
   { checked: 3, carry: 1 },
+] as const;
+
+// Group capacity for 3-4 riders (XL ride).
+export const GROUP_BAG_CAPACITY = [
+  { checked: 3, carry: 3 },
+  { checked: 4, carry: 2 },
 ] as const;

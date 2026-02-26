@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { useApp } from '@/components/providers/AppClientProvider';
 import { uploadProfilePhoto, changePassword, updateUserProfile } from '@/lib/auth';
+import { auth } from '@/lib/firebase';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -61,10 +63,10 @@ const ProfileFormSchema = z.object({
   campusArea: z.string().optional(),
   photo: FileSchema
     .optional()
-    .refine((f: any) => !f || typeof f === 'string' || (f && typeof f.size === 'number'), 'Invalid file.')
-    .refine((f: any) => !f || f.size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
+    .refine((f: unknown) => !f || typeof f === 'string' || (f && typeof (f as File).size === 'number'), 'Invalid file.')
+    .refine((f: unknown) => !f || (f as File).size <= MAX_FILE_SIZE, 'Max file size is 5MB.')
     .refine(
-      (f: any) => !f || ACCEPTED_IMAGE_TYPES.includes(f.type as (typeof ACCEPTED_IMAGE_TYPES)[number]),
+      (f: unknown) => !f || ACCEPTED_IMAGE_TYPES.includes((f as File).type as (typeof ACCEPTED_IMAGE_TYPES)[number]),
       'Only .jpg, .png, and .webp are supported.'
     ),
 });
@@ -135,7 +137,7 @@ export default function ProfilePage() {
       profileForm.reset({
         firstName,
         lastName,
-        gender: (user.gender as any) || 'Prefer not to say',
+        gender: (user.gender as ProfileFormValues['gender']) || 'Prefer not to say',
         graduationYear: user.graduationYear ? String(user.graduationYear) : undefined,
         campusArea: user.campusArea || '',
         photo: undefined,
@@ -146,6 +148,13 @@ export default function ProfilePage() {
   }, [user, profileForm]);
 
   const isBC = user?.university === 'Boston College';
+
+  // Track auth.currentUser reactively so hasPasswordProvider updates when auth restores
+  const [firebaseUser, setFirebaseUser] = useState(auth.currentUser);
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+  }, []);
+  const hasPasswordProvider = firebaseUser?.providerData.some(p => p.providerId === 'password') ?? false;
 
   const watchedNewPassword = passwordForm.watch('newPassword');
   const passwordRequirements = useMemo(() => {
@@ -176,18 +185,26 @@ export default function ProfilePage() {
   const handleProfileSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
 
+    const wantsPhotoUpload = data.photo && typeof data.photo !== 'string';
     let photoUrl: string | undefined;
+    let photoError: string | undefined;
+
     try {
-      if (data.photo && typeof data.photo !== 'string') {
+      // Upload photo with a timeout so a misconfigured Storage bucket can't hang forever
+      if (wantsPhotoUpload) {
+        const file = data.photo as File;
+        console.log('[Profile] Uploading photo:', { name: file.name, size: file.size, type: file.type, userId: user.id, hasAuthUser: !!auth.currentUser });
         try {
-          photoUrl = await uploadProfilePhoto(user.id, data.photo);
-        } catch (err: any) {
-          console.error('Photo upload failed:', err);
-          toast({
-            title: 'Photo upload failed',
-            description: err?.message ?? 'Saving your other changes without the new photo.',
-            variant: 'destructive',
-          });
+          photoUrl = await Promise.race([
+            uploadProfilePhoto(user.id, file),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Photo upload timed out. Please try again.')), 30_000)
+            ),
+          ]);
+          console.log('[Profile] Upload succeeded, URL:', photoUrl);
+        } catch (err) {
+          console.error('[Profile] Photo upload failed:', err);
+          photoError = err instanceof Error ? err.message : 'Unknown upload error.';
         }
       }
 
@@ -199,14 +216,23 @@ export default function ProfilePage() {
         ...(photoUrl ? { photoUrl } : {}),
       });
 
-      toast({ title: 'Success!', description: 'Profile updated.' });
-      await refreshUserProfile();
+      if (photoError) {
+        toast({
+          title: 'Profile saved, but photo upload failed',
+          description: photoError,
+          variant: 'destructive',
+        });
+      } else {
+        toast({ title: 'Success!', description: 'Profile updated.' });
+      }
+
+      // Refresh context in the background — don't block the save feedback
+      refreshUserProfile().catch(() => {});
       if (photoUrl) setPhotoPreview(photoUrl);
-    } catch (err: any) {
-      console.error('Profile update failed:', err);
+    } catch (err) {
       toast({
         title: 'Update failed',
-        description: err?.message ?? 'Please try again.',
+        description: err instanceof Error ? err.message : 'Please try again.',
         variant: 'destructive',
       });
     }
@@ -217,10 +243,10 @@ export default function ProfilePage() {
       await changePassword(vals.currentPassword, vals.newPassword);
       toast({ title: 'Password updated', description: 'You may be asked to reauthenticate later.' });
       passwordForm.reset();
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: 'Password update failed',
-        description: err?.message ?? 'Please try again.',
+        description: err instanceof Error ? err.message : 'Please try again.',
         variant: 'destructive',
       });
     }
@@ -234,8 +260,8 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(json?.message || 'Failed to delete account.');
       toast({ title: 'Account deleted', description: 'We’re sad to see you go.' });
       if (typeof window !== 'undefined') window.location.href = '/login?deleted=true';
-    } catch (err: any) {
-      toast({ title: 'Deletion failed', description: err?.message ?? 'Please try again.', variant: 'destructive' });
+    } catch (err) {
+      toast({ title: 'Deletion failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
       setIsDeleting(false);
     }
   };
@@ -415,68 +441,79 @@ export default function ProfilePage() {
 
               <Separator className="my-8" />
 
-              <div className="space-y-6">
-                <div>
+              {hasPasswordProvider ? (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-xl font-headline flex items-center gap-2">
+                      <KeyRound className="h-5 w-5 text-primary" /> Change Password
+                    </h3>
+                    <p className="text-muted-foreground text-sm mt-1">
+                      For your security, you may be asked to reauthenticate.
+                    </p>
+                  </div>
+
+                  <form onSubmit={passwordForm.handleSubmit(async (vals) => handlePasswordSubmit(vals))} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="currentPassword">Current Password</Label>
+                      <div className="relative">
+                        <Input id="currentPassword" type={showCurrentPassword ? 'text' : 'password'} {...passwordForm.register('currentPassword')} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowCurrentPassword(v => !v)}>
+                          {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      {passwordForm.formState.errors.currentPassword && (
+                        <p className="text-destructive text-sm">{passwordForm.formState.errors.currentPassword.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="newPassword">New Password</Label>
+                      <div className="relative">
+                        <Input id="newPassword" type={showNewPassword ? 'text' : 'password'} {...passwordForm.register('newPassword')} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowNewPassword(v => !v)}>
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      {passwordForm.formState.errors.newPassword && (
+                        <p className="text-destructive text-sm">{passwordForm.formState.errors.newPassword.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
+                      <div className="relative">
+                        <Input id="confirmNewPassword" type={showConfirmNewPassword ? 'text' : 'password'} {...passwordForm.register('confirmNewPassword')} />
+                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConfirmNewPassword(v => !v)}>
+                          {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                      {passwordForm.formState.errors.confirmNewPassword && (
+                        <p className="text-destructive text-sm">{passwordForm.formState.errors.confirmNewPassword.message}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 rounded-md border p-3 shadow-sm">
+                      {passwordRequirements.map((req, i) => (
+                        <PasswordRequirement key={i} meets={req.meets} label={req.label} />
+                      ))}
+                    </div>
+
+                    <Button type="submit" variant="secondary" disabled={!passwordForm.formState.isValid || passwordForm.formState.isSubmitting}>
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      {passwordForm.formState.isSubmitting ? 'Updating…' : 'Update Password'}
+                    </Button>
+                  </form>
+                </div>
+              ) : (
+                <div className="space-y-2">
                   <h3 className="text-xl font-headline flex items-center gap-2">
                     <KeyRound className="h-5 w-5 text-primary" /> Change Password
                   </h3>
-                  <p className="text-muted-foreground text-sm mt-1">
-                    For your security, you may be asked to reauthenticate.
+                  <p className="text-muted-foreground text-sm">
+                    Your account is linked to Google. Password management is handled through your Google account settings.
                   </p>
                 </div>
-
-                <form onSubmit={passwordForm.handleSubmit(async (vals) => handlePasswordSubmit(vals))} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="currentPassword">Current Password</Label>
-                    <div className="relative">
-                      <Input id="currentPassword" type={showCurrentPassword ? 'text' : 'password'} {...passwordForm.register('currentPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowCurrentPassword(v => !v)}>
-                        {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {passwordForm.formState.errors.currentPassword && (
-                      <p className="text-destructive text-sm">{passwordForm.formState.errors.currentPassword.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <div className="relative">
-                      <Input id="newPassword" type={showNewPassword ? 'text' : 'password'} {...passwordForm.register('newPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowNewPassword(v => !v)}>
-                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {passwordForm.formState.errors.newPassword && (
-                      <p className="text-destructive text-sm">{passwordForm.formState.errors.newPassword.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
-                    <div className="relative">
-                      <Input id="confirmNewPassword" type={showConfirmNewPassword ? 'text' : 'password'} {...passwordForm.register('confirmNewPassword')} />
-                      <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConfirmNewPassword(v => !v)}>
-                        {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {passwordForm.formState.errors.confirmNewPassword && (
-                      <p className="text-destructive text-sm">{passwordForm.formState.errors.confirmNewPassword.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-1 rounded-md border p-3 shadow-sm">
-                    {passwordRequirements.map((req, i) => (
-                      <PasswordRequirement key={i} meets={req.meets} label={req.label} />
-                    ))}
-                  </div>
-
-                  <Button type="submit" variant="secondary" disabled={!passwordForm.formState.isValid || passwordForm.formState.isSubmitting}>
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    {passwordForm.formState.isSubmitting ? 'Updating…' : 'Update Password'}
-                  </Button>
-                </form>
-              </div>
+              )}
 
               <Separator className="my-8" />
 

@@ -7,8 +7,9 @@ import { db } from '@/lib/firebase';
 import { getCurrentUser, getMatchById, getChatId, sendMessage, listenToTypingStatus } from '@/lib/auth';
 import type { UserProfile, Match } from '@/lib/types';
 import { Card } from '@/components/ui/card';
-import { Loader2, ChevronLeft } from 'lucide-react';
+import { Loader2, ChevronLeft, Lock } from 'lucide-react';
 import Link from 'next/link';
+import { parseISO, isPast, addHours } from 'date-fns';
 import MessageBubble from '@/components/chat/MessageBubble';
 import Composer from '@/components/chat/Composer';
 
@@ -36,8 +37,9 @@ export default function ChatPage() {
       if (!m) { router.replace('/main'); return; }
       setMatch(m);
 
+      // Use ALL participant IDs for chatId (supports 2, 3, or 4 riders)
       const ids = Object.keys(m.participants);
-      const cId = getChatId(ids[0], ids[1]); // sorted inside helper
+      const cId = getChatId(...ids);
       setChatId(cId);
     })().catch(() => router.replace('/main'));
   }, [matchId, router]);
@@ -51,7 +53,7 @@ export default function ChatPage() {
       limit(500)
     );
     const unsub = onSnapshot(qRef, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Msg)));
       // scroll to bottom on new messages
       requestAnimationFrame(() => {
         scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: 'smooth' });
@@ -68,11 +70,33 @@ export default function ChatPage() {
     return () => off();
   }, [chatId]);
 
-  const otherName = useMemo(() => {
+  // Show all partner names (supports group matches)
+  const otherNames = useMemo(() => {
     if (!me || !match) return '';
-    const other = Object.values(match.participants).find((p) => p.userId !== me.id);
-    return other?.userName || 'Your match';
+    const others = Object.values(match.participants).filter((p) => p.userId !== me.id);
+    if (others.length === 0) return 'Your match';
+    return others.map(p => p.userName || 'Partner').join(', ');
   }, [me, match]);
+
+  // Determine who is typing (show their name)
+  const typingName = useMemo(() => {
+    if (!typingUserId || !match || !me || typingUserId === me.id) return null;
+    const p = match.participants[typingUserId];
+    return p?.userName?.split(' ')[0] || 'Someone';
+  }, [typingUserId, match, me]);
+
+  // Check if ride is completed (match completed or flight time passed)
+  const isCompleted = useMemo(() => {
+    if (!match) return false;
+    if (match.status === 'completed') return true;
+    // Check if the latest flight time has passed (+ 4h buffer)
+    const flightTimes = Object.values(match.participants).map(p => p.flightDateTime);
+    const latestFlight = flightTimes.reduce((latest, dt) => {
+      const t = new Date(dt).getTime();
+      return t > latest ? t : latest;
+    }, 0);
+    return latestFlight > 0 && isPast(addHours(new Date(latestFlight), 4));
+  }, [match]);
 
   const handleSend = async (text: string) => {
     if (!me || !chatId) return;
@@ -98,7 +122,7 @@ export default function ChatPage() {
           <Link href="/planned-trips" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <ChevronLeft className="h-4 w-4" /> Back
           </Link>
-          <p className="font-medium">{otherName}</p>
+          <p className="font-medium">{otherNames}</p>
           <div className="w-10" /> {/* spacer */}
         </div>
 
@@ -113,14 +137,21 @@ export default function ChatPage() {
             />
           ))}
 
-          {/* Typing */}
-          {typingUserId && typingUserId !== 'me' && (
-            <div className="text-xs text-muted-foreground">Typing…</div>
+          {/* Typing indicator */}
+          {typingName && (
+            <div className="text-xs text-muted-foreground">{typingName} is typing…</div>
           )}
         </div>
 
-        {/* Composer */}
-        <Composer chatId={chatId} onSend={handleSend} />
+        {/* Composer or read-only banner */}
+        {isCompleted ? (
+          <div className="flex items-center justify-center gap-2 border-t bg-muted/50 p-3 text-sm text-muted-foreground">
+            <Lock className="h-4 w-4" />
+            This chat is closed. The ride has been completed.
+          </div>
+        ) : (
+          <Composer chatId={chatId} userId={me.id} onSend={handleSend} />
+        )}
       </Card>
     </div>
   );

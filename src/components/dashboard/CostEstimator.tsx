@@ -12,7 +12,9 @@ export function CostEstimator() {
       </CardHeader>
       <CardContent>
         <p className="text-muted-foreground">
-          Estimated costs per person for a ride can range from $20 to over $100 in some scenarios. We will try our best to factor in the number of bags you are bringing. As such, we try our best to have matches have a combined total of 2 or less personal items and 3 or less checked bags.
+          Estimated ride costs per person typically range from about $20 to $100+, depending on the route and timing.
+          We also factor in luggage when matching riders, and we generally aim for a combined total of two carry-on items
+          or fewer and three checked bags or fewer.
         </p>
         <p className="text-xs text-muted-foreground mt-2">
           This is an estimate. Actual cost may vary based on distance, ride-sharing service prices at the time of booking, and number of passengers. Coordinate with your match for exact details.

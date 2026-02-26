@@ -151,8 +151,8 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
         if (!res.ok) throw new Error(data?.message || 'Failed to submit trip.');
         toast({ title: 'Trip submitted', description: 'We are looking for a match!' });
         router.push('/trip-submitted');
-      } catch (e: any) {
-        toast({ title: 'Submission Error', description: e.message ?? 'Please try again.', variant: 'destructive' });
+      } catch (e) {
+        toast({ title: 'Submission Error', description: e instanceof Error ? e.message : 'Please try again.', variant: 'destructive' });
       }
     });
   }

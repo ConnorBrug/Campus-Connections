@@ -3,28 +3,10 @@ import { redirect } from 'next/navigation';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { Header } from '@/components/core/Header';
 import AppClientProvider from '@/components/providers/AppClientProvider';
+import { profileIsIncomplete } from '@/lib/types';
+import type { UserProfile } from '@/lib/types';
 
 export const runtime = 'nodejs';
-
-function profileIsIncomplete(p: any): boolean {
-  if (!p) return true;
-
-  // must have grad year
-  if (!p.graduationYear) return true;
-
-  // must have valid gender
-  const VALID = ['Male', 'Female', 'Other', 'Prefer not to say'];
-  if (!p.gender || !VALID.includes(p.gender)) return true;
-
-  // BC requires campusArea
-  if (p.university === 'Boston College' && !p.campusArea) return true;
-
-  // require first + last name
-  const tokens = (p.name || '').trim().split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) return true;
-
-  return false;
-}
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const cookie = (await cookies()).get('__session')?.value;
@@ -42,10 +24,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   if (!emailVerified) redirect('/verify-email');
 
-  let initialProfile: any = null;
+  let initialProfile: UserProfile | null = null;
   if (uid) {
     const snap = await adminDb.collection('users').doc(uid).get();
-    if (snap.exists) initialProfile = snap.data();
+    if (snap.exists) initialProfile = snap.data() as UserProfile;
   }
 
   // 🚧 force onboarding if incomplete

@@ -8,21 +8,23 @@ import { setTypingStatus } from '@/lib/auth';
 
 export default function Composer({
   chatId,
+  userId,
   onSend,
 }: {
   chatId: string;
+  userId: string;
   onSend: (text: string) => Promise<void>;
 }) {
   const [text, setText] = useState('');
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startTyping = useCallback(async () => {
-    try { await setTypingStatus(chatId, 'me'); } catch {}
+    try { await setTypingStatus(chatId, userId); } catch {}
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(async () => {
       try { await setTypingStatus(chatId, null); } catch {}
     }, 1500);
-  }, [chatId]);
+  }, [chatId, userId]);
 
   useEffect(() => {
     return () => {

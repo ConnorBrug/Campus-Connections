@@ -37,8 +37,8 @@ export default function ForgotPasswordPage() {
     try {
       await sendPasswordReset(data.email);
       setSubmissionSuccess(true);
-    } catch (error: any) {
-      if (error.code === 'auth/user-not-found') {
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'auth/user-not-found') {
         setSubmissionError('No account found with that email address.');
       } else {
         setSubmissionError('An unexpected error occurred. Please try again.');
@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
           <CardDescription>
             {submissionSuccess
               ? 'Check your inbox for the reset link.'
-              : 'Enter your email to receive a password reset link.'}
+              : 'Enter your email to receive a password reset link. If you signed up with Google, use Google to sign in instead — no password reset is needed.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -115,7 +115,7 @@ export default function ForgotPasswordPage() {
         <CardFooter className="flex flex-col items-center space-y-4 pt-6">
           <Button variant="link" asChild className="text-sm">
             <Link href="/login">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Login
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Log In
             </Link>
           </Button>
           <p className="text-sm text-muted-foreground">

@@ -11,8 +11,7 @@ export async function getServerUser() {
 
     const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
     return decoded;
-  } catch (err) {
-    console.error("Error verifying server user:", err);
+  } catch {
     return null;
   }
 }

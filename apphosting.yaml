@@ -1,6 +1,6 @@
 # apphosting.yaml
 runConfig:
-  maxInstances: 1
+  maxInstances: 10
 
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY

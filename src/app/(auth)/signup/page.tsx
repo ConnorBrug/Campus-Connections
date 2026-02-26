@@ -15,7 +15,7 @@ export default async function Page() {
       await adminAuth.verifySessionCookie(session, true);
       redirect('/main');
     } catch {
-      console.log('Invalid session cookie found, showing signup page.');
+      // Invalid session — show signup page
     }
   }
 

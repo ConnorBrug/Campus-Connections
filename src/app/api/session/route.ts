@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebase-admin';
+import { isRateLimited } from '@/lib/rate-limit';
 
 const COOKIE_NAME = '__session';
 
 // POST /api/session  -> exchange ID token for a session cookie
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  if (isRateLimited(`session:${ip}`, 10, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const { idToken } = await req.json();
     if (!idToken) {
@@ -30,8 +36,8 @@ export async function POST(req: Request) {
       maxAge: Math.floor(expiresIn / 1000),
     });
     return res;
-  } catch (e) {
-    console.error('POST /api/session failed:', e);
+  } catch (err) {
+    console.error('POST /api/session error:', err);
     return NextResponse.json({ error: 'Failed to create session' }, { status: 401 });
   }
 }

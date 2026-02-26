@@ -27,7 +27,7 @@ export default function HomePage() {
               <Link href="/signup">Sign Up</Link>
             </Button>
             <Button variant="ghost" size="sm" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-white">
-              <Link href="/login">Login</Link>
+              <Link href="/login">Log In</Link>
             </Button>
           </nav>
         </div>
@@ -48,7 +48,7 @@ export default function HomePage() {
                 <Link href="/signup">Get Started</Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/login">Login</Link>
+                <Link href="/login">Log In</Link>
               </Button>
             </div>
           </div>

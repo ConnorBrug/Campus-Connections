@@ -19,16 +19,7 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function profileIsIncomplete(p: any): boolean {
-  if (!p) return true;
-  if (!p.graduationYear) return true;
-  const VALID = ['Male', 'Female', 'Other', 'Prefer not to say'];
-  if (!p.gender || !VALID.includes(p.gender)) return true;
-  if (p.university === 'Boston College' && !p.campusArea) return true;
-  const tokens = (p.name || '').trim().split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) return true;
-  return false;
-}
+import { profileIsIncomplete } from '@/lib/types';
 
 export default function LoginClient() {
   const router = useRouter();
@@ -52,13 +43,15 @@ export default function LoginClient() {
         return;
       }
       router.replace('/main');
-    } catch (error: any) {
-      if (error.code) {
-        switch (error.code) {
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      const message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
+      if (code) {
+        switch (code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':
           case 'auth/invalid-credential':
-            setPageError('Invalid email or password.');
+            setPageError('Invalid email or password. If you originally signed up with Google, please use the "Continue with Google" button above.');
             break;
           case 'auth/too-many-requests':
             setPageError('Too many login attempts. Please try again later.');
@@ -67,10 +60,10 @@ export default function LoginClient() {
             setPageError('Please enter a valid email address.');
             break;
           default:
-            setPageError(error.message || 'An unexpected error occurred during login.');
+            setPageError(message);
         }
       } else {
-        setPageError(error?.message || 'Login failed. Please check your credentials.');
+        setPageError(message);
       }
       setIsSubmitting(false);
     }
@@ -86,8 +79,8 @@ export default function LoginClient() {
       } else {
         router.replace('/main');
       }
-    } catch (e: any) {
-      setPageError(e?.message || 'Google sign-in failed.');
+    } catch (e) {
+      setPageError(e instanceof Error ? e.message : 'Google sign-in failed.');
       setIsSubmitting(false);
     }
   };
@@ -162,7 +155,7 @@ export default function LoginClient() {
             />
           </div>
           <Button type="submit" className="w-full">
-            Login
+            Log In
             <LogIn className="ml-2 h-4 w-4" />
           </Button>
         </form>

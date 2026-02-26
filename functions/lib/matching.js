@@ -33,282 +33,366 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchCandidatesForDay = fetchCandidatesForDay;
-exports.runMatchingForDay = runMatchingForDay;
-exports.tryImmediateMatchForRequest = tryImmediateMatchForRequest;
+exports.computePairs = computePairs;
+exports.computeFallbacks = computeFallbacks;
+exports.findBestMatchForTrip = findBestMatchForTrip;
+exports.runPairingForWindow = runPairingForWindow;
+// functions/src/matching.ts
 const admin = __importStar(require("firebase-admin"));
-const config_1 = require("./config");
 const utils_1 = require("./utils");
+const email_1 = require("./email");
+if (!admin.apps.length)
+    admin.initializeApp();
 const db = admin.firestore();
-// Fetch all candidate requests for a date range (inclusive day)
-async function fetchCandidatesForDay(dayStart, dayEnd) {
-    const startTs = admin.firestore.Timestamp.fromDate(dayStart);
-    const endTs = admin.firestore.Timestamp.fromDate(dayEnd);
-    const snap = await db.collection("tripRequests")
-        .where("status", "in", ["pending", "queued"]) // unmatched pool
-        .where("flight.boardingTime", ">=", startTs)
-        .where("flight.boardingTime", "<=", endTs)
-        .get();
-    const list = [];
-    snap.forEach(doc => {
-        const d = doc.data();
-        const req = {
-            id: doc.id,
-            ...d,
-            bagUnits: d.bagUnits ?? (0, utils_1.bagUnits)(d.bags)
-        };
-        list.push(req);
-    });
-    return list;
-}
-// Compute compatibility map (who can pair with whom) under core constraints
-function computeCompatibility(cands, timeWindowMins) {
-    const n = cands.length;
-    const compat = new Map();
-    for (let i = 0; i < n; i++) {
-        const a = cands[i];
-        const set = new Set();
-        for (let j = 0; j < n; j++)
-            if (i !== j) {
-                const b = cands[j];
-                const sameCampus = a.universityId === b.universityId && a.campusArea === b.campusArea;
-                if (!sameCampus)
-                    continue;
-                if (!(0, utils_1.withinMinutes)(a.flight.boardingTime, b.flight.boardingTime, timeWindowMins))
-                    continue;
-                if (!(0, utils_1.isGenderCompatible)(a, b))
-                    continue;
-                const totalUnits = (a.bagUnits ?? (0, utils_1.bagUnits)(a.bags)) + (b.bagUnits ?? (0, utils_1.bagUnits)(b.bags));
-                if (totalUnits <= config_1.CAR_MAX_BAG_UNITS)
-                    set.add(b.id);
+const toMs = (iso) => new Date(iso).getTime();
+const isoNow = () => new Date().toISOString();
+const chatExpiryFromRiders = (riders) => {
+    const latest = riders.reduce((mx, r) => Math.max(mx, toMs(r.flightDateTime)), 0);
+    return admin.firestore.Timestamp.fromDate(new Date(latest + 4 * 3600_000));
+};
+function pickBestCandidate(a, candidates) {
+    let bestPreferred = null;
+    let scorePreferred = -Infinity;
+    let bestFallback = null;
+    let scoreFallback = -Infinity;
+    for (const b of candidates) {
+        const s = candidateScore(a, b);
+        if ((0, utils_1.genderCompatible)(a, b)) {
+            if (s > scorePreferred) {
+                scorePreferred = s;
+                bestPreferred = b;
             }
-        compat.set(a.id, set);
+        }
+        else if (s > scoreFallback) {
+            scoreFallback = s;
+            bestFallback = b;
+        }
     }
-    return compat;
+    if (bestPreferred)
+        return { best: bestPreferred, genderRelaxed: false };
+    if (bestFallback)
+        return { best: bestFallback, genderRelaxed: true };
+    return { best: null, genderRelaxed: false };
 }
-function sortByFewestOptions(cands, compat) {
-    return [...cands].sort((a, b) => (compat.get(a.id)?.size ?? 0) - (compat.get(b.id)?.size ?? 0));
+function candidateScore(a, b) {
+    const sameFlight = a.flightCode && b.flightCode && a.flightCode === b.flightCode ? 1 : 0;
+    const aBags = (a.numberOfCheckedBags || 0) + (a.numberOfCarryons || 0);
+    const bBags = (b.numberOfCheckedBags || 0) + (b.numberOfCarryons || 0);
+    const spread = Math.abs(aBags - bBags);
+    const timeGapMin = Math.abs(toMs(a.flightDateTime) - toMs(b.flightDateTime)) / 60000;
+    return sameFlight * 10000 + spread * 100 - Math.floor(timeGapMin);
 }
-// Try to form triples within same flight code first
-function attemptTriplesSameFlight(cands, timeWindowMins) {
-    const used = new Set();
-    const triples = [];
-    // group by flight code (normalized)
-    const byCode = {};
-    cands.forEach(r => {
-        const k = (0, utils_1.normalizeFlightCode)(r.flight.flightCode || "");
-        byCode[k] = byCode[k] || [];
-        byCode[k].push(r);
-    });
-    for (const code of Object.keys(byCode)) {
-        const group = byCode[code].filter(r => !used.has(r.id));
-        // sort by bag units ascending to favor light-bag triples
-        group.sort((a, b) => (a.bagUnits - b.bagUnits));
-        for (let i = 0; i < group.length; i++) {
-            const a = group[i];
-            if (used.has(a.id))
-                continue;
-            for (let j = i + 1; j < group.length; j++) {
-                const b = group[j];
-                if (used.has(b.id))
-                    continue;
-                for (let k = j + 1; k < group.length; k++) {
-                    const c = group[k];
-                    if (used.has(c.id))
-                        continue;
-                    const timesOk = (0, utils_1.withinMinutes)(a.flight.boardingTime, b.flight.boardingTime, timeWindowMins)
-                        && (0, utils_1.withinMinutes)(a.flight.boardingTime, c.flight.boardingTime, timeWindowMins);
-                    if (!timesOk)
-                        continue;
-                    if (!(0, utils_1.isGenderCompatible)(a, b) || !(0, utils_1.isGenderCompatible)(a, c) || !(0, utils_1.isGenderCompatible)(b, c))
-                        continue;
-                    const total = a.bagUnits + b.bagUnits + c.bagUnits;
-                    if (total <= config_1.CAR_MAX_BAG_UNITS) {
-                        triples.push([a, b, c]);
-                        used.add(a.id);
-                        used.add(b.id);
-                        used.add(c.id);
-                        break; // move to next i
-                    }
-                }
+const groupKey = (t) => `${t.university}::${t.campusArea ?? ''}::${t.departingAirport}`;
+function computePairs(all) {
+    const buckets = new Map();
+    for (const t of all)
+        (buckets.get(groupKey(t)) ?? buckets.set(groupKey(t), []).get(groupKey(t))).push(t);
+    const pairs = [];
+    const unmatched = [];
+    for (const group of buckets.values()) {
+        const pool = group.slice().sort((a, b) => {
+            const cand = (u) => group.filter(x => x.id !== u.id && (0, utils_1.sameCampusAirport)(u, x) && (0, utils_1.withinOneHour)(u, x) && (0, utils_1.genderCompatible)(u, x)).length;
+            const aCand = cand(a);
+            const bCand = cand(b);
+            if (aCand !== bCand)
+                return aCand - bCand;
+            const aBags = (a.numberOfCheckedBags || 0) + (a.numberOfCarryons || 0);
+            const bBags = (b.numberOfCheckedBags || 0) + (b.numberOfCarryons || 0);
+            return bBags - aBags; // heavier first
+        });
+        while (pool.length) {
+            const a = pool.shift();
+            const candidates = pool.filter((b) => (0, utils_1.sameCampusAirport)(a, b) && (0, utils_1.withinOneHour)(a, b) && (0, utils_1.fitsCapacity)([a, b]));
+            const { best } = pickBestCandidate(a, candidates);
+            if (best) {
+                const idx = pool.findIndex(x => x.id === best.id);
+                if (idx >= 0)
+                    pool.splice(idx, 1);
+                pairs.push([a, best]);
+            }
+            else {
+                unmatched.push(a);
             }
         }
     }
-    return { triples, used };
+    return { pairs, unmatched };
 }
-// Pairing strategy within a bucket: pair heavy with light to fit under max
-function pairGreedy(cands) {
-    const arr = [...cands].sort((a, b) => (a.bagUnits - b.bagUnits));
-    const pairs = [];
-    let l = 0, r = arr.length - 1;
-    while (l < r) {
-        const left = arr[l];
-        const right = arr[r];
-        if ((left.bagUnits + right.bagUnits) <= config_1.CAR_MAX_BAG_UNITS) {
-            pairs.push([left, right]);
-            l++;
-            r--;
+/**
+ * Writes a match document + updates all trip requests in a batch.
+ * Works for 2, 3, or 4 riders.
+ */
+function writeMatchToBatch(batch, riders, tier, reason) {
+    const matchRef = db.collection('matches').doc();
+    const participants = {};
+    for (const r of riders) {
+        participants[r.userId] = {
+            userId: r.userId,
+            userName: r.userName ?? 'User',
+            userPhotoUrl: r.userPhotoUrl ?? null,
+            university: r.university,
+            flightCode: r.flightCode,
+            flightDateTime: r.flightDateTime,
+        };
+    }
+    const allSameFlight = riders.every(r => r.flightCode === riders[0].flightCode);
+    const match = {
+        id: matchRef.id,
+        participantIds: riders.map(r => r.userId),
+        participants,
+        requestIds: riders.map(r => r.id),
+        university: riders[0].university,
+        campusArea: riders[0].campusArea ?? null,
+        departingAirport: riders[0].departingAirport,
+        flightCode: allSameFlight ? riders[0].flightCode : undefined,
+        assignedAtISO: isoNow(),
+        status: 'matched',
+        reason,
+        matchTier: tier,
+    };
+    batch.set(matchRef, match);
+    for (const r of riders) {
+        batch.update(db.collection('tripRequests').doc(r.id), {
+            status: 'matched',
+            matchId: matchRef.id,
+            matchedUserId: riders.find(x => x.userId !== r.userId)?.userId ?? null,
+            cancellationAlert: false,
+            fallbackTier: tier,
+        });
+    }
+    // Auto-create chat document + system message for the matched riders
+    const chatId = riders.map(r => r.userId).sort().join('_');
+    const chatRef = db.collection('chats').doc(chatId);
+    const lines = riders.map(r => {
+        const dt = new Date(r.flightDateTime);
+        const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return `- ${r.userName ?? 'Rider'}: Flight ${r.flightCode} at ${timeStr}.`;
+    });
+    const systemMsg = [
+        'This is an automated message to start your coordination.',
+        '',
+        ...lines,
+        '',
+        'Recommendation: Plan to arrive at the airport at least 1 hour before the earlier flight\'s boarding time.',
+    ].join('\n');
+    batch.set(chatRef, {
+        userIds: riders.map(r => r.userId),
+        lastMessage: 'Chat initiated.',
+        expiresAt: chatExpiryFromRiders(riders),
+        typing: null,
+    }, { merge: true });
+    const msgRef = chatRef.collection('messages').doc();
+    batch.set(msgRef, {
+        text: systemMsg,
+        senderId: 'system',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    return { matchRef, match };
+}
+/**
+ * Fallback matching tiers for unmatched riders.
+ * Returns arrays of groups matched and riders still unmatched.
+ */
+function computeFallbacks(unmatched, _allPending) {
+    const remaining = new Set(unmatched.map(t => t.id));
+    const byId = new Map(unmatched.map(t => [t.id, t]));
+    const getRemaining = () => [...remaining].map(id => byId.get(id));
+    // ---- Tier 1: Light bags, groups of 3-4 ----
+    const groups = [];
+    const lightBag = getRemaining().filter(t => (0, utils_1.isLightBags)(t));
+    const lightBagBuckets = new Map();
+    for (const t of lightBag) {
+        const key = `${t.university}::${t.campusArea ?? ''}::${t.departingAirport}`;
+        (lightBagBuckets.get(key) ?? lightBagBuckets.set(key, []).get(key)).push(t);
+    }
+    for (const bucket of lightBagBuckets.values()) {
+        // Sort by flight time
+        bucket.sort((a, b) => new Date(a.flightDateTime).getTime() - new Date(b.flightDateTime).getTime());
+        let i = 0;
+        while (i < bucket.length) {
+            if (!remaining.has(bucket[i].id)) {
+                i++;
+                continue;
+            }
+            const candidates = [bucket[i]];
+            for (let j = i + 1; j < bucket.length && candidates.length < 4; j++) {
+                if (!remaining.has(bucket[j].id))
+                    continue;
+                const prospect = [...candidates, bucket[j]];
+                if ((0, utils_1.withinOneHour)(candidates[0], bucket[j]) &&
+                    (0, utils_1.groupGenderCompatible)(prospect) &&
+                    (0, utils_1.fitsGroupCapacity)(prospect)) {
+                    candidates.push(bucket[j]);
+                }
+            }
+            if (candidates.length >= 3) {
+                groups.push(candidates);
+                for (const c of candidates)
+                    remaining.delete(c.id);
+            }
+            i++;
+        }
+    }
+    // ---- Tier 2: Heavy bags, XL suggestion ----
+    const xlSuggested = [];
+    for (const t of getRemaining()) {
+        if (!(0, utils_1.isLightBags)(t)) {
+            xlSuggested.push(t);
+            remaining.delete(t.id);
+        }
+    }
+    // ---- Tier 3: Expand campus area ----
+    const relaxedCampusPairs = [];
+    const campusPool = getRemaining().filter(t => !!t.campusArea);
+    const usedInCampus = new Set();
+    for (let i = 0; i < campusPool.length; i++) {
+        if (usedInCampus.has(campusPool[i].id))
+            continue;
+        const a = campusPool[i];
+        const candidates = campusPool
+            .slice(i + 1)
+            .filter((b) => !usedInCampus.has(b.id))
+            .filter((b) => (0, utils_1.sameUniversityAirport)(a, b))
+            .filter((b) => (0, utils_1.withinOneHour)(a, b))
+            .filter((b) => (0, utils_1.fitsCapacity)([a, b]));
+        const { best } = pickBestCandidate(a, candidates);
+        if (best) {
+            relaxedCampusPairs.push([a, best]);
+            usedInCampus.add(a.id);
+            usedInCampus.add(best.id);
+            remaining.delete(a.id);
+            remaining.delete(best.id);
+        }
+    }
+    // ---- Tier 4: Expand time to 2 hours ----
+    const relaxedTimePairs = [];
+    const timePool = getRemaining();
+    const usedInTime = new Set();
+    for (let i = 0; i < timePool.length; i++) {
+        if (usedInTime.has(timePool[i].id))
+            continue;
+        const a = timePool[i];
+        const candidates = timePool
+            .slice(i + 1)
+            .filter((b) => !usedInTime.has(b.id))
+            .filter((b) => (0, utils_1.sameCampusAirport)(a, b))
+            .filter((b) => (0, utils_1.withinTwoHours)(a, b))
+            .filter((b) => (0, utils_1.fitsCapacity)([a, b]));
+        const { best } = pickBestCandidate(a, candidates);
+        if (best) {
+            relaxedTimePairs.push([a, best]);
+            usedInTime.add(a.id);
+            usedInTime.add(best.id);
+            remaining.delete(a.id);
+            remaining.delete(best.id);
+        }
+    }
+    // ---- Tier 5: No match warning ----
+    const now = Date.now();
+    const noMatchWarnings = [];
+    const stillUnmatched = [];
+    for (const t of getRemaining()) {
+        const hoursUntilFlight = (new Date(t.flightDateTime).getTime() - now) / 3600_000;
+        if (hoursUntilFlight < 3) {
+            noMatchWarnings.push(t);
         }
         else {
-            // right too heavy to pair with any (since left is lightest), drop right
-            r--;
+            stillUnmatched.push(t);
         }
     }
-    const unused = new Set(arr.slice(l, r + 1).map(x => x.id));
-    return { pairs, unused };
+    return { groups, xlSuggested, relaxedCampusPairs, relaxedTimePairs, noMatchWarnings, stillUnmatched };
 }
-// Build a group in Firestore and mark members as matched
-async function persistGroup(requests) {
+/**
+ * Finds the single best match for a given trip from a pool of pending trips.
+ * Used for late-submission instant matching.
+ */
+function findBestMatchForTrip(trip, pool) {
+    const candidates = pool.filter((b) => b.id !== trip.id &&
+        b.userId !== trip.userId &&
+        (0, utils_1.sameCampusAirport)(trip, b) &&
+        (0, utils_1.withinOneHour)(trip, b) &&
+        (0, utils_1.fitsCapacity)([trip, b]));
+    return pickBestCandidate(trip, candidates).best;
+}
+async function loadPending(minISO, maxISO) {
+    const snap = await db.collection('tripRequests')
+        .where('status', '==', 'pending')
+        .where('flightDateTime', '>=', minISO)
+        .where('flightDateTime', '<', maxISO)
+        .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+async function runPairingForWindow(hoursFrom, hoursTo) {
+    const now = Date.now();
+    const minISO = new Date(now + hoursFrom * 3600_000).toISOString();
+    const maxISO = new Date(now + hoursTo * 3600_000).toISOString();
+    const pending = await loadPending(minISO, maxISO);
+    if (!pending.length)
+        return { created: 0, groups: 0, fallbacks: 0 };
+    const { pairs, unmatched } = computePairs(pending);
     const batch = db.batch();
-    const totalUnits = requests.reduce((s, r) => s + (r.bagUnits ?? 0), 0);
-    const groupRef = db.collection("rideGroups").doc();
-    const group = {
-        universityId: requests[0].universityId,
-        campusArea: requests[0].campusArea,
-        memberIds: requests.map(r => r.id),
-        members: requests.map(r => ({
-            requestId: r.id,
-            userId: r.userId,
-            gender: r.gender,
-            bags: r.bags,
-            bagUnits: r.bagUnits,
-            flight: { flightCode: r.flight.flightCode, boardingTime: (0, utils_1.tsToISO)(r.flight.boardingTime) }
-        })),
-        bagUnitsTotal: totalUnits,
-        capacityUnits: config_1.CAR_MAX_BAG_UNITS,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    batch.set(groupRef, group);
-    for (const r of requests) {
-        const ref = db.collection("tripRequests").doc(r.id);
-        batch.update(ref, { status: "matched", groupId: groupRef.id, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    let created = 0;
+    const matchedTrips = [];
+    for (const [a, b] of pairs) {
+        writeMatchToBatch(batch, [a, b], 'standard', 'Best available pair');
+        matchedTrips.push([a, b]);
+        created++;
     }
-    await batch.commit();
-}
-async function runMatchingForDay(dayStart, dayEnd, isHourlyRetry = false) {
-    const timeWindow = config_1.DEFAULT_TIME_WINDOW_MINS;
-    const candidates = await fetchCandidatesForDay(dayStart, dayEnd);
-    if (candidates.length === 0)
-        return { matchedGroups: 0, matchedPeople: 0 };
-    // Ensure derived bagUnits present (persist quietly if missing)
-    await Promise.all(candidates.filter(c => c.bagUnits == null).map(c => db.collection("tripRequests").doc(c.id).update({ bagUnits: (0, utils_1.bagUnits)(c.bags) }).catch(() => { })));
-    // First pass: within each (university,campus), prioritize same flight code triples, then pairs
-    const byCampus = {};
-    for (const r of candidates) {
-        const k = (0, utils_1.groupKey)(r);
-        (byCampus[k] = byCampus[k] || []).push(r);
+    // --- Fallback matching ---
+    let fallbacks = 0;
+    if (unmatched.length > 0) {
+        const fb = computeFallbacks(unmatched, pending);
+        for (const group of fb.groups) {
+            writeMatchToBatch(batch, group, 'group', `Light-bag group of ${group.length}`);
+            matchedTrips.push(group);
+            created++;
+            fallbacks++;
+        }
+        for (const t of fb.xlSuggested) {
+            batch.update(db.collection('tripRequests').doc(t.id), {
+                xlRideSuggested: true,
+                fallbackTier: 'xl-suggested',
+            });
+            fallbacks++;
+        }
+        for (const [a, b] of fb.relaxedCampusPairs) {
+            writeMatchToBatch(batch, [a, b], 'relaxed-campus', 'Cross-campus match');
+            matchedTrips.push([a, b]);
+            created++;
+            fallbacks++;
+        }
+        for (const [a, b] of fb.relaxedTimePairs) {
+            writeMatchToBatch(batch, [a, b], 'relaxed-time', '2-hour window match');
+            matchedTrips.push([a, b]);
+            created++;
+            fallbacks++;
+        }
+        for (const t of fb.noMatchWarnings) {
+            batch.update(db.collection('tripRequests').doc(t.id), {
+                noMatchWarningSent: true,
+                fallbackTier: 'no-match',
+            });
+            fallbacks++;
+        }
+        // Best-effort email notifications for fallback tiers
+        for (const t of fb.xlSuggested) {
+            (0, email_1.sendXlRideSuggestion)(t).catch(() => { });
+        }
+        for (const t of fb.noMatchWarnings) {
+            (0, email_1.sendNoMatchNotification)(t).catch(() => { });
+        }
     }
-    let matchedGroups = 0;
-    let matchedPeople = 0;
-    const used = new Set();
-    for (const key of Object.keys(byCampus)) {
-        const pool = byCampus[key].filter(r => !used.has(r.id));
-        // Triples (same flight) if riders allow expansion or default policy prefers 3
-        const { triples, used: usedTriples } = attemptTriplesSameFlight(pool, timeWindow);
-        for (const tri of triples) {
-            await persistGroup(tri);
-            tri.forEach(r => used.add(r.id));
-            matchedGroups++;
-            matchedPeople += 3;
-        }
-        // Now try pairs within same flight code first, then general within time window
-        // a) same flight code pairing
-        const byCode = {};
-        for (const r of pool) {
-            if (used.has(r.id))
-                continue;
-            const fc = (0, utils_1.normalizeFlightCode)(r.flight.flightCode || "");
-            (byCode[fc] = byCode[fc] || []).push(r);
-        }
-        for (const code of Object.keys(byCode)) {
-            const group = byCode[code].filter(r => !used.has(r.id));
-            const { pairs } = pairGreedy(group);
-            for (const p of pairs) {
-                if (p.some(r => used.has(r.id)))
-                    continue;
-                await persistGroup(p);
-                p.forEach(r => used.add(r.id));
-                matchedGroups++;
-                matchedPeople += p.length;
-            }
-        }
-        // b) leftover: general pairing within time window, fairness to edge cases
-        const leftovers = pool.filter(r => !used.has(r.id));
-        const compat = computeCompatibility(leftovers, timeWindow);
-        const sorted = sortByFewestOptions(leftovers, compat);
-        const seen = new Set();
-        for (const a of sorted) {
-            if (used.has(a.id) || seen.has(a.id))
-                continue;
-            const opts = [...(compat.get(a.id) || [])].filter(id => !used.has(id) && !seen.has(id));
-            // pick partner that best balances bag units (heaviest that still fits)
-            const partner = opts.map(id => leftovers.find(x => x.id === id))
-                .sort((x, y) => (y.bagUnits - x.bagUnits))
-                .find(b => (a.bagUnits + b.bagUnits) <= config_1.CAR_MAX_BAG_UNITS);
-            if (partner) {
-                await persistGroup([a, partner]);
-                used.add(a.id);
-                used.add(partner.id);
-                seen.add(a.id);
-                seen.add(partner.id);
-                matchedGroups++;
-                matchedPeople += 2;
-            }
-        }
-        // c) special pass: heaviest riders try to pair with zero-bag riders
-        const left2 = pool.filter(r => !used.has(r.id));
-        if (left2.length >= 2) {
-            const zeros = left2.filter(r => (r.bagUnits ?? 0) === 0);
-            if (zeros.length) {
-                const heavy = left2.filter(r => (r.bagUnits ?? 0) > 0).sort((a, b) => (b.bagUnits - a.bagUnits));
-                for (const h of heavy) {
-                    const z = zeros.find(zr => zr.id !== h.id && (0, utils_1.isGenderCompatible)(h, zr) && (0, utils_1.withinMinutes)(h.flight.boardingTime, zr.flight.boardingTime, timeWindow) && (h.bagUnits + zr.bagUnits) <= config_1.CAR_MAX_BAG_UNITS);
-                    if (z) {
-                        await persistGroup([h, z]);
-                        used.add(h.id);
-                        used.add(z.id);
-                        matchedGroups++;
-                        matchedPeople += 2;
-                    }
+    if (created > 0 || unmatched.length > 0) {
+        await batch.commit();
+        // Send email notifications for all matches (best-effort)
+        for (const group of matchedTrips) {
+            for (const rider of group) {
+                const partners = group.filter(x => x.userId !== rider.userId);
+                if (partners.length > 0) {
+                    (0, email_1.sendMatchNotification)(rider, partners[0]).catch(() => { });
                 }
             }
         }
     }
-    // Mark the rest as queued or unmatched with expansion suggestions
-    const remaining = candidates.filter(r => !used.has(r.id));
-    if (remaining.length) {
-        const batch = db.batch();
-        for (const r of remaining) {
-            const suggestions = buildExpansionAdvice(r);
-            batch.update(db.collection("tripRequests").doc(r.id), {
-                status: isHourlyRetry ? "queued" : "queued",
-                expansionAdvice: suggestions,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        }
-        await batch.commit();
-    }
-    return { matchedGroups, matchedPeople };
+    return { created, groups: pairs.length, fallbacks };
 }
-function buildExpansionAdvice(r) {
-    const adv = [];
-    if ((r.bagUnits ?? 0) <= 2)
-        adv.push("You can allow groups of 3–4; your bags are light enough.");
-    if ((r.bagUnits ?? 0) >= config_1.CAR_MAX_BAG_UNITS)
-        adv.push("You are at the bag limit; consider XL or pairing with someone who has 0 bags.");
-    adv.push("You can extend your time window to 120 minutes.");
-    adv.push("You can allow cross‑campus matches.");
-    return adv;
-}
-async function tryImmediateMatchForRequest(reqId) {
-    const doc = await db.collection("tripRequests").doc(reqId).get();
-    if (!doc.exists)
-        return;
-    const r = { id: doc.id, ...doc.data() };
-    const dayStart = new Date(r.flight.boardingTime.toDate());
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(r.flight.boardingTime.toDate());
-    dayEnd.setHours(23, 59, 59, 999);
-    // Reuse daily matcher on a narrow pool by filtering day
-    await runMatchingForDay(dayStart, dayEnd, true);
-}
+//# sourceMappingURL=matching.js.map

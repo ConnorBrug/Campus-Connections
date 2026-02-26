@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
-import type { UserProfile, TripRequest, FlaggedEntry, Match } from './types';
+import type { UserProfile, TripRequest, FlaggedEntry, Match, FirestoreTimestamp } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
 import { normalizeName } from './utils';
 
@@ -40,10 +40,13 @@ const getVerificationActionUrl = () => `${getBaseUrl()}/verify`;
 /* ------------------------- whitelist + email checks ------------------------- */
 
 // --- Whitelisted email exceptions (non-university domains allowed) ---
-const EMAIL_WHITELIST = new Set<string>([
-  'connorbrugger@gmail.com',
-  'michaelrazavi2@gmail.com',
-]);
+// Configured via NEXT_PUBLIC_EMAIL_WHITELIST env var (comma-separated)
+const EMAIL_WHITELIST = new Set<string>(
+  (process.env.NEXT_PUBLIC_EMAIL_WHITELIST ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 const isWhitelisted = (email: string): boolean =>
   EMAIL_WHITELIST.has((email || '').toLowerCase());
@@ -300,6 +303,19 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 /* ----------------------- profile + password + email ---------------------- */
 
 export async function uploadProfilePhoto(userId: string, file: File): Promise<string> {
+  // Ensure client-side Firebase Auth is ready (may not be restored yet after SSR navigation)
+  if (!auth.currentUser) {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Authentication not available. Please reload the page and try again.')), 10_000);
+      const unsub = onAuthStateChanged(auth, (user) => {
+        unsub();
+        clearTimeout(timeout);
+        if (user) resolve();
+        else reject(new Error('You must be signed in to upload a photo.'));
+      });
+    });
+  }
+
   const path = `profile-photos/${userId}/${Date.now()}-${file.name}`;
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, file, { contentType: file.type });
@@ -323,13 +339,13 @@ export async function updateUserProfile(userId: string, data: Partial<UserProfil
     if (auth.currentUser) {
       const authUpdatePayload: { displayName?: string | null; photoURL?: string | null } = {};
       if (updatePayload.name) authUpdatePayload.displayName = updatePayload.name;
-      if (typeof (data as any).photoUrl === 'string') authUpdatePayload.photoURL = (data as any).photoUrl;
+      if ('photoUrl' in data && typeof data.photoUrl === 'string') authUpdatePayload.photoURL = data.photoUrl;
       if (Object.keys(authUpdatePayload).length) {
         await fbUpdateProfile(auth.currentUser, authUpdatePayload);
       }
     }
   } catch (e) {
-    console.warn('updateUserProfile: failed to update Firebase Auth profile', e);
+    // Silently ignore — Auth profile sync is best-effort
   }
 
   // 3) Refresh ID token so any dependent UI/claims update immediately
@@ -366,7 +382,7 @@ export async function sendVerificationEmailAgain(): Promise<void> {
 
 export async function saveTripRequest(tripData: Omit<TripRequest, 'id' | 'createdAt'>): Promise<TripRequest> {
   const docRef = doc(collection(db, 'tripRequests'));
-  const newTrip: TripRequest = { ...tripData, id: docRef.id, createdAt: serverTimestamp() as any };
+  const newTrip: TripRequest = { ...tripData, id: docRef.id, createdAt: serverTimestamp() as FirestoreTimestamp };
   await setDoc(docRef, newTrip);
   return newTrip;
 }
@@ -451,48 +467,55 @@ export async function updateTripStatus(
 ): Promise<void> {
   const tripRef = doc(db, 'tripRequests', tripId);
   if (status === 'cancelled') {
-    await deleteDoc(tripRef).catch((err) => console.error('Failed to delete cancelled trip:', err));
+    await deleteDoc(tripRef);
     return;
   }
   const updateData: Partial<TripRequest> = { status };
   if (status === 'matched' && matchId) updateData.matchId = matchId;
-  if (status === 'pending') updateData.matchId = undefined;
+  if (status === 'pending') updateData.matchId = null;
   if (cancellationAlert !== undefined) updateData.cancellationAlert = cancellationAlert;
   await updateDoc(tripRef, updateData);
 }
 
 /* ------------------------------ chat/flags ------------------------------ */
 
-export function getChatId(userId1: string, userId2: string): string {
-  return [userId1, userId2].sort().join('_');
+export function getChatId(...userIds: string[]): string {
+  return userIds.sort().join('_');
 }
 
 export async function sendMessage(chatId: string, senderId: string, text: string): Promise<void> {
   const chatRef = doc(db, 'chats', chatId);
   const msgsRef = collection(chatRef, 'messages');
   await addDoc(msgsRef, { senderId, text, timestamp: serverTimestamp() });
-  await updateDoc(chatRef, { lastMessage: text, lastUpdated: serverTimestamp() });
+  // Use setDoc with merge so it works even if chat doc doesn't exist yet
+  await setDoc(chatRef, { lastMessage: text, lastUpdated: serverTimestamp() }, { merge: true });
 }
 
 export async function initiateChat(_matchId: string, participants: Match['participants']): Promise<void> {
   const userIds = Object.keys(participants);
-  const chatId = getChatId(userIds[0], userIds[1]);
+  const chatId = getChatId(...userIds);
   const chatRef = doc(db, 'chats', chatId);
+  const latestFlightMs = userIds.reduce((mx, uid) => {
+    const t = parseISO(participants[uid].flightDateTime).getTime();
+    return t > mx ? t : mx;
+  }, 0);
+  const expiresAt = new Date(latestFlightMs + 4 * 3600_000);
 
-  const p1 = participants[userIds[0]];
-  const p2 = participants[userIds[1]];
+  const lines = userIds.map(uid => {
+    const p = participants[uid];
+    return `- **${p.userName}**: Flight ${p.flightCode} at ${format(parseISO(p.flightDateTime), 'p')}.`;
+  });
 
   const msg = `
 This is an automated message to start your coordination.
 
-- **${p1.userName}**: Flight ${p1.flightCode} at ${format(parseISO(p1.flightDateTime), 'p')}.
-- **${p2.userName}**: Flight ${p2.flightCode} at ${format(parseISO(p2.flightDateTime), 'p')}.
+${lines.join('\n')}
 
 **Recommendation:** Plan to arrive at the airport at least 1 hour before the earlier flight's boarding time.
   `.trim();
 
-  await setDoc(chatRef, { userIds, lastMessage: 'Chat initiated.' }, { merge: true });
-  const msgsRef = collection(chatRef, 'chats', chatId, 'messages');
+  await setDoc(chatRef, { userIds, lastMessage: 'Chat initiated.', expiresAt }, { merge: true });
+  const msgsRef = collection(chatRef, 'messages');
   await addDoc(msgsRef, { text: msg, senderId: 'system', timestamp: serverTimestamp() });
 }
 
@@ -504,7 +527,7 @@ export async function setTypingStatus(chatId: string, userId: string | null): Pr
 
 export function listenToTypingStatus(chatId: string, cb: (typingUserId: string | null) => void): () => void {
   const chatRef = doc(db, 'chats', chatId);
-  return onSnapshot(chatRef, (snap) => cb((snap.data() as any)?.typing || null));
+  return onSnapshot(chatRef, (snap) => cb((snap.data() as Record<string, unknown> | undefined)?.typing as string | null ?? null));
 }
 
 export async function getFlaggedUsersForUser(userId: string): Promise<string[]> {
@@ -513,20 +536,47 @@ export async function getFlaggedUsersForUser(userId: string): Promise<string[]> 
 }
 
 export async function flagUser(flaggerId: string, flaggedUserId: string, reason: string): Promise<void> {
+  const cleanedReason = reason.trim();
+  if (!cleanedReason) {
+    throw new Error('A reason is required to submit a flag.');
+  }
+  if (flaggerId === flaggedUserId) {
+    throw new Error('You cannot flag yourself.');
+  }
+
+  const duplicateQuery = query(
+    collection(db, 'flags'),
+    where('flaggerId', '==', flaggerId),
+    where('flaggedUserId', '==', flaggedUserId),
+    limit(1)
+  );
+  const duplicateSnap = await getDocs(duplicateQuery);
+  if (!duplicateSnap.empty) {
+    throw new Error('You have already flagged this user.');
+  }
+
   const batch = writeBatch(db);
 
   const flagRef = doc(collection(db, 'flags'));
-  const flagData: FlaggedEntry = { flaggerId, flaggedUserId, reason, timestamp: serverTimestamp() };
+  const flagData: FlaggedEntry = {
+    flaggerId,
+    flaggedUserId,
+    reason: cleanedReason,
+    timestamp: serverTimestamp() as FirestoreTimestamp
+  };
   batch.set(flagRef, flagData);
 
   const flaggerRef = doc(db, 'users', flaggerId);
   const flaggerProfile = await getUserProfile(flaggerId);
-  const updated = [...(flaggerProfile?.flaggedUserIds || []), flaggedUserId];
+  const updated = Array.from(new Set([...(flaggerProfile?.flaggedUserIds || []), flaggedUserId]));
   batch.update(flaggerRef, { flaggedUserIds: updated });
 
   const flagsQuery = query(collection(db, 'flags'), where('flaggedUserId', '==', flaggedUserId));
   const flagsSnapshot = await getDocs(flagsQuery);
-  if (flagsSnapshot.size >= 2) {
+  const uniqueFlaggers = new Set<string>(flagsSnapshot.docs.map((d) => (d.data() as { flaggerId?: string }).flaggerId).filter(Boolean) as string[]);
+  uniqueFlaggers.add(flaggerId);
+
+  if (uniqueFlaggers.size >= 3) {
     const flaggedUserRef = doc(db, 'users', flaggedUserId);
     batch.update(flaggedUserRef, { isBanned: true });
   }

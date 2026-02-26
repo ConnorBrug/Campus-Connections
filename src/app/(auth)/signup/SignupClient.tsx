@@ -83,16 +83,7 @@ function PasswordRequirement({ meets, label }: { meets: boolean; label: string }
   );
 }
 
-function profileIsIncomplete(p: any): boolean {
-  if (!p) return true;
-  if (!p.graduationYear) return true;
-  const VALID = ['Male', 'Female', 'Other', 'Prefer not to say'];
-  if (!p.gender || !VALID.includes(p.gender)) return true;
-  if (p.university === 'Boston College' && !p.campusArea) return true;
-  const tokens = (p.name || '').trim().split(/\s+/).filter(Boolean);
-  if (tokens.length < 2) return true;
-  return false;
-}
+import { profileIsIncomplete } from '@/lib/types';
 
 export default function SignupClient() {
   const router = useRouter();
@@ -173,22 +164,23 @@ export default function SignupClient() {
         duration: 7000,
       });
       router.replace('/verify-email');
-    } catch (error: any) {
+    } catch (error) {
       let errorMessage: React.ReactNode = "An unexpected error occurred during signup.";
-      if (error.code) {
-        switch (error.code) {
+      const code = (error as { code?: string })?.code;
+      if (code) {
+        switch (code) {
           case 'auth/email-already-in-use':
             errorMessage = (
               <>
                 An account with the email {data.email} already exists.{" "}
                 <Link href="/login" className="font-bold text-primary hover:underline" prefetch={false}>
-                  Go to Login
+                  Go to Log In
                 </Link>.
               </>
             );
             break;
           default:
-            errorMessage = `Firebase Error: ${error.message}`;
+            errorMessage = `Firebase Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
         }
       }
       setPageError(errorMessage);
@@ -216,8 +208,8 @@ export default function SignupClient() {
       } else {
         router.replace('/main');
       }
-    } catch (e: any) {
-      setPageError(e?.message || "Google sign-up failed.");
+    } catch (e) {
+      setPageError(e instanceof Error ? e.message : "Google sign-up failed.");
       setIsLoading(false);
     }
   };
@@ -255,7 +247,7 @@ export default function SignupClient() {
 
         <Button type="button" variant="outline" className="w-full mb-4" onClick={handleGoogleSignup}>
           <GoogleIcon className="mr-2 h-4 w-4" />
-          Sign up with Google
+          Continue with Google
         </Button>
 
         <div className="relative my-4">
@@ -322,7 +314,7 @@ export default function SignupClient() {
                     <SelectContent>
                       <SelectItem value="2k">2k</SelectItem>
                       <SelectItem value="Newton">Newton</SelectItem>
-                      <SelectItem value="CoRo/Upper">CoRo/Upper</SelectItem>
+                      <SelectItem value="CoRo/Upper">CoRo/Upper (College Road/Upper)</SelectItem>
                       <SelectItem value="Lower">Lower</SelectItem>
                     </SelectContent>
                   </Select>

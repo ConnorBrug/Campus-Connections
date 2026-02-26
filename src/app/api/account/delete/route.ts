@@ -1,9 +1,14 @@
-
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
+import { isRateLimited } from '@/lib/rate-limit';
 
-export async function POST() {
+export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  if (isRateLimited(`delete:${ip}`, 3, 60_000)) {
+    return NextResponse.json({ message: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const store = await cookies();
     const session = store.get('__session')?.value;
@@ -23,10 +28,8 @@ export async function POST() {
     await adminAuth.deleteUser(uid);
 
     return NextResponse.json({ success: true, message: 'Account deleted' });
-  } catch (e) {
-    console.error('[account/delete] error:', e);
+  } catch (err) {
+    console.error('POST /api/account/delete error:', err);
     return NextResponse.json({ message: 'Failed to delete account' }, { status: 500 });
   }
 }
-
-    

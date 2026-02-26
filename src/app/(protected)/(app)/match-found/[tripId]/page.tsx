@@ -5,10 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { UserCheck, MessageSquare, CalendarDays, Loader2, Frown, User, Backpack } from 'lucide-react';
+import { UserCheck, MessageSquare, CalendarDays, Loader2, Frown, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getTripById, getMatchById, getCurrentUser } from '@/lib/auth';
-import type { TripRequest, Match } from '@/lib/types';
+import type { Match } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format, parseISO } from 'date-fns';
 
@@ -17,9 +17,10 @@ export default function MatchFoundPage() {
   const router = useRouter();
   const tripId = params.tripId as string;
 
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name?: string | null } | null>(null);
   const [matchDetails, setMatchDetails] = useState<Match | null>(null);
-  const [matchedPartnerDetails, setMatchedPartnerDetails] = useState<any | null>(null);
+  const [matchedPartnerDetails, setMatchedPartnerDetails] = useState<Match['participants'][string] | null>(null);
+  const [allPartners, setAllPartners] = useState<Match['participants'][string][]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -39,17 +40,17 @@ export default function MatchFoundPage() {
             const match = await getMatchById(trip.matchId);
             if (match) {
               setMatchDetails(match);
-              const partnerId = match.participantIds.find(id => id !== user.id);
-              if (partnerId && match.participants[partnerId]) {
-                 setMatchedPartnerDetails(match.participants[partnerId]);
-              }
+              const partnerIds = match.participantIds.filter(id => id !== user.id);
+              const partners = partnerIds.map(pid => match.participants[pid]).filter(Boolean);
+              setAllPartners(partners);
+              if (partners.length > 0) setMatchedPartnerDetails(partners[0]);
             }
           } else if (trip) {
             // Trip exists but isn't matched, redirect
             router.replace('/dashboard');
           }
-        } catch (err) {
-          console.error("Failed to fetch match details", err);
+        } catch {
+          // Failed to load match — show empty state
         } finally {
           setIsLoading(false);
         }
@@ -87,7 +88,7 @@ export default function MatchFoundPage() {
             <CardTitle>Match Not Found</CardTitle>
           </CardHeader>
           <CardContent>
-            <CardDescription>Could not find the details for this match. It may have been cancelled or there was an error.</CardDescription>
+            <CardDescription>Could not find the details for this match. It may have been canceled, or there may have been an error.</CardDescription>
           </CardContent>
           <CardFooter className="flex justify-center">
              <Button asChild variant="outline">
@@ -106,27 +107,28 @@ export default function MatchFoundPage() {
           <div className="flex justify-center mb-6">
             <UserCheck className="h-20 w-20 text-green-500" />
           </div>
-          <CardTitle className="text-3xl md:text-4xl font-headline tracking-tight">It's a Match!</CardTitle>
+          <CardTitle className="text-3xl md:text-4xl font-headline tracking-tight">It&apos;s a Match!</CardTitle>
           <CardDescription className="text-lg text-muted-foreground mt-2 px-4">
-            You've been matched with {matchedPartnerDetails.userName} for your upcoming trip.
+            You&apos;ve been matched with {allPartners.map(p => p.userName).join(' & ') || matchedPartnerDetails.userName} for your upcoming trip.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8 px-6 md:px-8 py-8">
-            <div className="flex flex-col items-center gap-4 text-center">
+            {(allPartners.length > 0 ? allPartners : [matchedPartnerDetails]).map((partner) => (
+            <div key={partner.userId} className="flex flex-col items-center gap-4 text-center">
                  <Avatar className="h-24 w-24 border-2 border-primary">
-                    <AvatarImage src={matchedPartnerDetails.userPhotoUrl || ''} alt={matchedPartnerDetails.userName} data-ai-hint="person avatar"/>
-                    <AvatarFallback className="text-3xl">{getInitials(matchedPartnerDetails.userName)}</AvatarFallback>
+                    <AvatarImage src={partner.userPhotoUrl || ''} alt={partner.userName} data-ai-hint="person avatar"/>
+                    <AvatarFallback className="text-3xl">{getInitials(partner.userName)}</AvatarFallback>
                 </Avatar>
                 <div>
-                    <h3 className="text-2xl font-bold">{matchedPartnerDetails.userName}</h3>
-                    <p className="text-md text-muted-foreground">{matchedPartnerDetails.university}</p>
+                    <h3 className="text-2xl font-bold">{partner.userName}</h3>
+                    <p className="text-md text-muted-foreground">{partner.university}</p>
                 </div>
                  <div className="text-sm text-muted-foreground pt-2 space-y-1">
-                    <p className="flex items-center gap-2"><User className="h-4 w-4"/>Flight: {matchedPartnerDetails.flightCode} at {format(parseISO(matchedPartnerDetails.flightDateTime), 'p')}</p>
-                    <p className="flex items-center gap-2"><Backpack className="h-4 w-4"/>Bags: {matchedPartnerDetails.bagCount}</p>
+                    <p className="flex items-center gap-2"><User className="h-4 w-4"/>Flight: {partner.flightCode} at {format(parseISO(partner.flightDateTime), 'p')}</p>
                 </div>
             </div>
-          
+            ))}
+
             <div className="text-center space-y-4">
                 <p className="text-muted-foreground">
                     Next step: Coordinate your ride! Send a message to confirm your plans, pickup location, and share costs.
@@ -134,7 +136,7 @@ export default function MatchFoundPage() {
                 <Button asChild size="lg">
                     <Link href={`/chat/${matchDetails.id}`}>
                         <MessageSquare className="mr-2 h-5 w-5"/>
-                        Chat with {matchedPartnerDetails.userName.split(' ')[0]}
+                        Chat with your match{allPartners.length > 1 ? 'es' : ''}
                     </Link>
                 </Button>
             </div>

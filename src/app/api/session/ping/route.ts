@@ -13,7 +13,8 @@ export async function GET() {
   try {
     const decoded = await adminAuth.verifySessionCookie(cookie, true);
     return NextResponse.json({ ok: true, uid: decoded.uid, email: decoded.email ?? null });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, reason: "verify_failed", code: e?.code, message: e?.message }, { status: 401 });
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error('Unknown error');
+    return NextResponse.json({ ok: false, reason: "verify_failed", message: err.message }, { status: 401 });
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { z } from 'zod';
+import { isRateLimited } from '@/lib/rate-limit';
 
 const BodySchema = z.object({
   name: z.string().min(2),
@@ -12,6 +13,11 @@ const BodySchema = z.object({
 });
 
 export async function PATCH(req: Request) {
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  if (isRateLimited(`profile:${ip}`, 10, 60_000)) {
+    return NextResponse.json({ message: 'Too many requests' }, { status: 429 });
+  }
+
   try {
     const store = await cookies();
     const session = store.get('__session')?.value;
@@ -32,7 +38,7 @@ export async function PATCH(req: Request) {
 
     const { name, university, gender, campusArea, photoUrl } = parsed.data;
 
-    const update: Record<string, any> = {
+    const update: Record<string, string> = {
       name,
       university,
       gender,
@@ -47,8 +53,8 @@ export async function PATCH(req: Request) {
     await adminDb.collection('users').doc(uid).update(update);
 
     return NextResponse.json({ success: true, message: 'Profile updated' });
-  } catch (e) {
-    console.error('[profile PATCH] error:', e);
+  } catch (err) {
+    console.error('PATCH /api/profile error:', err);
     return NextResponse.json({ message: 'Failed to update profile' }, { status: 500 });
   }
 }

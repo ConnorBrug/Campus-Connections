@@ -14,6 +14,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '
 import { Loader2, UserCheck, AlertTriangle } from 'lucide-react';
 
 import { getCurrentUser, updateUserProfile } from '@/lib/auth';
+import { VALID_GENDERS } from '@/lib/types';
 import type { UserProfile } from '@/lib/types';
 import { normalizeName } from '@/lib/utils';
 
@@ -61,14 +62,13 @@ export default function OnboardingPage() {
         setProfile(me);
 
         const { first, last } = splitNameSmart(me.name);
-        const allowed = ['Male', 'Female', 'Other', 'Prefer not to say'] as const;
-        const gender = allowed.includes(me.gender as any) ? (me.gender as FormValues['gender']) : undefined;
+        const gender = me.gender && VALID_GENDERS.includes(me.gender) ? (me.gender as FormValues['gender']) : undefined;
         const gradYear = me.graduationYear ? String(me.graduationYear) : undefined;
         const campus = me.university === 'Boston College' ? toUndef(me.campusArea) : undefined;
 
         form.reset({ firstName: first, lastName: last, gender, graduationYear: gradYear, campusArea: campus });
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load your profile.');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load your profile.');
       } finally {
         setLoading(false);
       }
@@ -101,8 +101,8 @@ export default function OnboardingPage() {
 
       const next = new URLSearchParams(window.location.search).get('next') || '/main';
       router.replace(next);
-    } catch (e: any) {
-      setError(e?.message || 'Could not save your information.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your information.');
       setSaving(false);
     }
   };

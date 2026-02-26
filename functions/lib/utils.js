@@ -1,43 +1,66 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.bagUnits = bagUnits;
-exports.isGenderCompatible = isGenderCompatible;
-exports.withinMinutes = withinMinutes;
-exports.tsToISO = tsToISO;
-exports.groupKey = groupKey;
-exports.normalizeFlightCode = normalizeFlightCode;
-const config_1 = require("./config");
-function bagUnits(bags) {
-    return (bags.checked * config_1.BAG_UNIT_WEIGHTS.checked) + (bags.carryOn * config_1.BAG_UNIT_WEIGHTS.carryOn);
+exports.fitsGroupCapacity = exports.isLightBags = exports.fitsCapacity = exports.sameUniversityAirport = exports.sameCampusAirport = exports.withinTwoHours = exports.withinOneHour = void 0;
+exports.genderCompatible = genderCompatible;
+exports.groupGenderCompatible = groupGenderCompatible;
+// functions/src/utils.ts
+const types_1 = require("./types");
+const toMs = (iso) => new Date(iso).getTime();
+const withinOneHour = (a, b) => Math.abs(toMs(a.flightDateTime) - toMs(b.flightDateTime)) <= 60 * 60 * 1000;
+exports.withinOneHour = withinOneHour;
+const withinTwoHours = (a, b) => Math.abs(toMs(a.flightDateTime) - toMs(b.flightDateTime)) <= 2 * 60 * 60 * 1000;
+exports.withinTwoHours = withinTwoHours;
+const sameCampusAirport = (a, b) => {
+    if (a.university !== b.university)
+        return false;
+    if (a.campusArea && b.campusArea && a.campusArea !== b.campusArea)
+        return false;
+    return a.departingAirport === b.departingAirport;
+};
+exports.sameCampusAirport = sameCampusAirport;
+/** Like sameCampusAirport but ignores campus area — only checks university + airport. */
+const sameUniversityAirport = (a, b) => {
+    if (a.university !== b.university)
+        return false;
+    return a.departingAirport === b.departingAirport;
+};
+exports.sameUniversityAirport = sameUniversityAirport;
+function genderCompatible(a, b) {
+    const aPref = a.userPreferences;
+    const bPref = b.userPreferences;
+    const aGender = a.userGender;
+    const bGender = b.userGender;
+    const aWants = aPref === 'No preference' || (!!bGender && aPref === bGender);
+    const bWants = bPref === 'No preference' || (!!aGender && bPref === aGender);
+    if (aPref !== 'No preference' && bPref !== 'No preference' && !!aGender && !!bGender) {
+        return aPref === bGender && bPref === aGender;
+    }
+    return aWants && bWants;
 }
-function isGenderCompatible(a, b) {
-    const prefA = a.genderPreference;
-    const prefB = b.genderPreference;
-    const gA = a.gender;
-    const gB = b.gender;
-    const okFor = (pref, self, other) => {
-        if (pref === "any")
-            return true;
-        if (pref === "same")
-            return self === other && self !== "unspecified" && other !== "unspecified";
-        if (pref === "female_only")
-            return other === "female";
-        if (pref === "male_only")
-            return other === "male";
-        return true;
-    };
-    return okFor(prefA, gA, gB) && okFor(prefB, gB, gA);
+/** Checks if all members of a group are gender-compatible with each other. */
+function groupGenderCompatible(group) {
+    for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+            if (!genderCompatible(group[i], group[j]))
+                return false;
+        }
+    }
+    return true;
 }
-function withinMinutes(a, b, mins) {
-    const diff = Math.abs(a.toMillis() - b.toMillis());
-    return diff <= mins * 60000;
-}
-function tsToISO(ts) {
-    return new Date(ts.toMillis()).toISOString();
-}
-function groupKey(req) {
-    return `${req.universityId}__${req.campusArea}`;
-}
-function normalizeFlightCode(code) {
-    return code.trim().toUpperCase();
-}
+const fitsCapacity = (pair) => {
+    const checked = pair.reduce((s, t) => s + (t.numberOfCheckedBags || 0), 0);
+    const carry = pair.reduce((s, t) => s + (t.numberOfCarryons || 0), 0);
+    return types_1.BAG_CAPACITY.some((rule) => checked <= rule.checked && carry <= rule.carry);
+};
+exports.fitsCapacity = fitsCapacity;
+/** Rider has <= 1 checked and <= 1 carry-on. */
+const isLightBags = (t) => (t.numberOfCheckedBags || 0) <= 1 && (t.numberOfCarryons || 0) <= 1;
+exports.isLightBags = isLightBags;
+/** Bag capacity check for groups of 3-4 riders. */
+const fitsGroupCapacity = (group) => {
+    const checked = group.reduce((s, t) => s + (t.numberOfCheckedBags || 0), 0);
+    const carry = group.reduce((s, t) => s + (t.numberOfCarryons || 0), 0);
+    return types_1.GROUP_BAG_CAPACITY.some((rule) => checked <= rule.checked && carry <= rule.carry);
+};
+exports.fitsGroupCapacity = fitsGroupCapacity;
+//# sourceMappingURL=utils.js.map
