@@ -1,0 +1,26 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "tripRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "flight.boardingTime", "order": "ASCENDING" },
+        { "fieldPath": "universityId", "order": "ASCENDING" },
+        { "fieldPath": "campusArea", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tripRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "universityId", "order": "ASCENDING" },
+        { "fieldPath": "campusArea", "order": "ASCENDING" },
+        { "fieldPath": "flight.flightCode", "order": "ASCENDING" },
+        { "fieldPath": "flight.boardingTime", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
