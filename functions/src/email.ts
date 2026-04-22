@@ -12,8 +12,6 @@ import { TripRequest } from './types';
 //   (optional) firebase functions:secrets:set APP_URL
 //
 // For local development, put them in functions/.env (gitignored).
-//
-// NOTE: `functions.config()` has been removed in favor of env vars / secrets.
 function getTransporter() {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -54,7 +52,7 @@ export async function sendMatchNotification(
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h2>Hey ${recipientName}!</h2>
-        <p>Great news — you've been matched with <strong>${partnerName}</strong> for your upcoming trip on <strong>${flightDate}</strong>.</p>
+        <p>Great news - you've been matched with <strong>${partnerName}</strong> for your upcoming trip on <strong>${flightDate}</strong>.</p>
         <p>Here are the details:</p>
         <ul>
           <li><strong>Your flight:</strong> ${recipient.flightCode} from ${recipient.departingAirport}</li>
@@ -68,7 +66,7 @@ export async function sendMatchNotification(
           </a>
         </p>
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          — The Connections Team
+          - The Connections Team
         </p>
       </div>
     `,
@@ -106,7 +104,7 @@ export async function sendTripRequestConfirmation(recipient: TripRequest): Promi
           </a>
         </p>
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          — The Connections Team
+          - The Connections Team
         </p>
       </div>
     `,
@@ -139,7 +137,7 @@ export async function sendNoMatchNotification(recipient: TripRequest): Promise<v
           </a>
         </p>
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          — The Connections Team
+          - The Connections Team
         </p>
       </div>
     `,
@@ -172,7 +170,7 @@ export async function sendXlRideSuggestion(recipient: TripRequest): Promise<void
           </a>
         </p>
         <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          — The Connections Team
+          - The Connections Team
         </p>
       </div>
     `,

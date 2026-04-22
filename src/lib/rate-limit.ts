@@ -1,5 +1,15 @@
 // Simple in-memory rate limiter for API routes.
 // Tracks requests per key (IP or UID) within a sliding window.
+//
+// CAVEAT: this is a per-process Map. On Vercel/Cloud Run/any multi-
+// instance deploy each lambda/container keeps its own counter, so the
+// effective limit is `limit * numberOfInstances`. That's fine for the
+// current scale (small app, cold-start dominated) but if we ever need a
+// hard guarantee - abuse throttle, paid-tier quotas, etc. - swap this
+// out for Upstash Redis or Firestore-backed counters. Also note that
+// the setInterval-based cleanup below only runs while the process is
+// warm; short-lived lambdas rely on the filter inside isRateLimited to
+// prune old timestamps.
 
 const store = new Map<string, number[]>();
 

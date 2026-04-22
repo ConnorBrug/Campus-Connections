@@ -470,3 +470,103 @@ This runs vitest against the matcher without touching Firestore — fast
 feedback for tweaks to `computePairs` / `computeFallbacks` /
 `findBestMatchForTrip`.
 
+### 15d. Scenario presets
+
+For end-to-end testing of specific matcher behaviors (group of 4, gender
+incompatibility, XL bag overflow, relaxed-campus fallback, etc.) the repo
+ships a named-scenario registry at `src/lib/dev/presets.mjs`. Each preset
+is a deterministic (users, trips) pair flagged `synthetic: true`.
+
+From the CLI:
+
+```bash
+# List every available preset
+node scripts/seed-test-trips.mjs --list-presets
+
+# Seed one preset (all synthetic):
+node scripts/seed-test-trips.mjs --preset group-of-4-light
+node scripts/seed-test-trips.mjs --preset xl-heavy-trio
+node scripts/seed-test-trips.mjs --preset gender-incompatible
+```
+
+Or from the dev matching dashboard (`/dev/matching`) use the **Seed
+scenario preset** card: pick a preset, set hours-from-now, click Seed.
+The dashboard's existing "Delete synthetic data" button cleans up every
+preset the same way as the random seeder.
+
+Presets available today:
+
+| Key | Shape | Expected matcher outcome |
+|---|---|---|
+| `same-flight-pair` | 2 BC riders, same flight | standard pair |
+| `group-of-4-light` | 4 BC riders, light bags, within 1h | group-of-4 tier |
+| `xl-heavy-trio` | 3 BC riders with heavy bags | XL suggested |
+| `gender-incompatible` | 2 riders with conflicting gender prefs | no match |
+| `two-hour-gap` | 2 riders 90 min apart | relaxed-time tier |
+| `relaxed-campus` | 2 BC riders, different campus areas | relaxed-campus tier |
+| `no-match-warning` | 1 solo rider, no candidate pool | warning email tier |
+| `mixed-pair-plus-xl` | 2 standard pair + 1 XL suggested | standard pair only |
+
+### 15e. Dev impersonation
+
+While running locally (`NODE_ENV === 'development'`), every row in the
+`/dev/matching` pool has an **Act as** button. Clicking it mints a
+`__session` cookie for that synthetic user and redirects to `/main`, so
+you can walk the full UX (planned-trips page, chat, match-found banner)
+as any seeded rider without going through Google OAuth.
+
+The underlying route is `POST /api/dev/impersonate` with body
+`{ uid: string }`. It 404s in production and refuses any UID whose
+`users/<uid>` doc is missing `synthetic: true`. To sign back out, click
+**Logout** in the header or clear the `__session` cookie.
+
+
+### 15d. Scenario presets
+
+For end-to-end testing of specific matcher behaviors (group of 4, gender
+incompatibility, XL bag overflow, relaxed-campus fallback, etc.) the repo
+ships a named-scenario registry at `src/lib/dev/presets.mjs`. Each preset
+is a deterministic (users, trips) pair flagged `synthetic: true`.
+
+From the CLI:
+
+```bash
+# List every available preset
+node scripts/seed-test-trips.mjs --list-presets
+
+# Seed one preset (all synthetic):
+node scripts/seed-test-trips.mjs --preset group-of-4-light
+node scripts/seed-test-trips.mjs --preset xl-heavy-trio
+node scripts/seed-test-trips.mjs --preset gender-incompatible
+```
+
+Or from the dev matching dashboard (`/dev/matching`) use the **Seed
+scenario preset** card: pick a preset, set hours-from-now, click Seed.
+The dashboard's existing "Delete synthetic data" button cleans up every
+preset the same way as the random seeder.
+
+Presets available today:
+
+| Key | Shape | Expected matcher outcome |
+|---|---|---|
+| `same-flight-pair` | 2 BC riders, same flight | standard pair |
+| `group-of-4-light` | 4 BC riders, light bags, within 1h | group-of-4 tier |
+| `xl-heavy-trio` | 3 BC riders with heavy bags | XL suggested |
+| `gender-incompatible` | 2 riders with conflicting gender prefs | no match |
+| `two-hour-gap` | 2 riders 90 min apart | relaxed-time tier |
+| `relaxed-campus` | 2 BC riders, different campus areas | relaxed-campus tier |
+| `no-match-warning` | 1 solo rider, no candidate pool | warning email tier |
+| `mixed-pair-plus-xl` | 2 standard pair + 1 XL suggested | standard pair only |
+
+### 15e. Dev impersonation
+
+While running locally (`NODE_ENV === 'development'`), every row in the
+`/dev/matching` pool has an **Act as** button. Clicking it mints a
+`__session` cookie for that synthetic user and redirects to `/main`, so
+you can walk the full UX (planned-trips page, chat, match-found banner)
+as any seeded rider without going through Google OAuth.
+
+The underlying route is `POST /api/dev/impersonate` with body
+`{ uid: string }`. It 404s in production and refuses any UID whose
+`users/<uid>` doc is missing `synthetic: true`. To sign back out, click
+**Logout** in the header or clear the `__session` cookie.

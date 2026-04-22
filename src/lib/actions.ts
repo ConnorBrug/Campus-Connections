@@ -7,7 +7,6 @@ import { redirect } from 'next/navigation';
 import { getUserProfile, saveTripRequest, changePassword, deleteCurrentUserAccount } from './auth';
 import { isValid, parse, format, isBefore, addHours, isPast, parseISO } from 'date-fns';
 import { adminDb } from './firebase-admin';
-import { getServerUser } from './server-auth';
 
 /* ----------------------------- Trip schema ----------------------------- */
 
@@ -170,8 +169,8 @@ export async function submitTripDetailsAction(
       status: 'pending',
       userPreferences: preferredMatchGender,
       userGender: safeGender,
-      matchId: null,          // <-- required by your TripRequest
-      matchedUserId: null,    // <-- required by your TripRequest
+      matchId: null,
+      matchedUserId: null,
       noMatchWarningSent: false,
       cancellationAlert: false,
     };
@@ -226,60 +225,20 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
   }
 }
 
-/* -------------------------- cancelTripAction -------------------------- */
-
-export async function cancelTripAction(
-  tripId: string
-): Promise<{ success: boolean; message: string }> {
-  const user = await getServerUser();
-  if (!user) return { success: false, message: 'You must be logged in.' };
-
-  const tripRef = adminDb.collection('tripRequests').doc(tripId);
-  const tripSnap = await tripRef.get();
-
-  if (!tripSnap.exists) return { success: false, message: 'Trip not found.' };
-
-  const tripData = tripSnap.data();
-  if (!tripData) return { success: false, message: 'Trip data could not be loaded.' };
-
-  if (tripData.userId !== user.uid) {
-    return { success: false, message: 'You are not authorized to cancel this trip.' };
-  }
-
-  try {
-    if (tripData.status === 'matched' && tripData.matchId) {
-      const matchRef = adminDb.collection('matches').doc(tripData.matchId);
-      const matchSnap = await matchRef.get();
-
-      if (matchSnap.exists) {
-        const matchData = matchSnap.data();
-        if (matchData) {
-          // Your interface uses `requestIds: [string, string]`
-          const otherTripId = matchData.requestIds?.find((id: string) => id !== tripId);
-
-          if (otherTripId) {
-            await adminDb.collection('tripRequests').doc(otherTripId).update({
-              status: 'pending',
-              matchId: null,
-              cancellationAlert: true,
-            });
-          }
-
-          await matchRef.update({ status: 'cancelled' });
-        }
-      }
-    }
-
-    await tripRef.delete();
-
-    revalidatePath('/dashboard');
-    revalidatePath('/planned-trips');
-
-    return { success: true, message: 'Your trip has been canceled.' };
-  } catch {
-    return { success: false, message: 'Failed to cancel the trip.' };
-  }
-}
+/* --------------------------------------------------------------------
+ * Canonical cancel path: POST /api/trips/[id]/cancel
+ *
+ * The server-action that used to live here (`cancelTripAction`) was
+ * removed because it diverged from the API route in several ways:
+ *  - It deleted matched trips instead of soft-cancelling (losing
+ *    the cancellation record needed for moderation).
+ *  - It did not require a reason when leaving a match.
+ *  - It was not rate-limited.
+ *  - It only handled 2-person matches (requestIds index 0/1).
+ * Nothing in the client was using it, so it was safe to drop. If you
+ * need a server-action wrapper in the future, make it a thin proxy
+ * over the API route rather than re-implementing the logic.
+ * ------------------------------------------------------------------ */
 
 /* ----------------------- changePasswordAction ----------------------- */
 

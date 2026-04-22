@@ -43,6 +43,19 @@ function pickBestCandidate(a: TripRequest, candidates: TripRequest[]): { best: T
   return { best: null, genderRelaxed: false };
 }
 
+/**
+ * Score how well `b` pairs with `a`. Higher is better.
+ *
+ * Weights are intentionally lopsided:
+ *   - sameFlight:  +10000   (same flight = same terminal + same ride timing;
+ *                            dominates everything short of capacity failure)
+ *   - bagSpread:   +100 * |aBags - bBags|  (encourages mixing a heavy rider
+ *                            with a light rider so both fit in capacity)
+ *   - timeGap:     - minutes between flights (soft tiebreaker)
+ *
+ * Capacity / gender / campus / time-window filters happen BEFORE scoring;
+ * candidateScore is called only on riders that are already viable.
+ */
 function candidateScore(a: TripRequest, b: TripRequest): number {
   const sameFlight = a.flightCode && b.flightCode && a.flightCode === b.flightCode ? 1 : 0;
   const aBags = (a.numberOfCheckedBags || 0) + (a.numberOfCarryons || 0);
@@ -148,7 +161,6 @@ function writeMatchToBatch(
     });
   }
 
-  // Auto-create chat document + system message for the matched riders
   const chatId = riders.map(r => r.userId).sort().join('_');
   const chatRef = db.collection('chats').doc(chatId);
 
@@ -212,7 +224,6 @@ export function computeFallbacks(
   }
 
   for (const bucket of lightBagBuckets.values()) {
-    // Sort by flight time
     bucket.sort((a, b) => new Date(a.flightDateTime).getTime() - new Date(b.flightDateTime).getTime());
 
     let i = 0;
@@ -359,7 +370,6 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
     created++;
   }
 
-  // --- Fallback matching ---
   let fallbacks = 0;
   if (unmatched.length > 0) {
     const fb = computeFallbacks(unmatched, pending);
@@ -401,7 +411,6 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
       fallbacks++;
     }
 
-    // Best-effort email notifications for fallback tiers
     for (const t of fb.xlSuggested) {
       sendXlRideSuggestion(t).catch(() => {});
     }
@@ -413,7 +422,6 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
   if (created > 0 || unmatched.length > 0) {
     await batch.commit();
 
-    // Send email notifications for all matches (best-effort)
     for (const group of matchedTrips) {
       for (const rider of group) {
         const partners = group.filter(x => x.userId !== rider.userId);

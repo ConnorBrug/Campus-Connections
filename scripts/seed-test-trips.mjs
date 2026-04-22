@@ -12,7 +12,9 @@
  *   node scripts/seed-test-trips.mjs --count 20
  *   node scripts/seed-test-trips.mjs --uni Vanderbilt --hours 12
  *   node scripts/seed-test-trips.mjs --airport JFK --hours 6
- *   node scripts/seed-test-trips.mjs --clean       # delete all status='pending' synthetic trips
+ *   node scripts/seed-test-trips.mjs --preset same-flight-pair --hours 6
+ *   node scripts/seed-test-trips.mjs --list-presets
+ *   node scripts/seed-test-trips.mjs --clean       # delete all synthetic trips + users
  *
  * Synthetic users are written to /users/synthetic-{N} so they don't collide
  * with real OAuth uids. Synthetic trips have a `synthetic: true` field and
@@ -22,8 +24,9 @@
 import admin from 'firebase-admin';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { PRESETS, materializePreset } from '../src/lib/dev/presets.mjs';
 
-// ---------- env loading (no extra dependency) ----------
+// ---------- env loading ----------
 function loadDotEnv() {
   for (const file of ['.env.local', '.env']) {
     const path = resolve(process.cwd(), file);
@@ -45,7 +48,7 @@ loadDotEnv();
 
 // ---------- args ----------
 function parseArgs(argv) {
-  const out = { count: 8, uni: 'Boston College', hours: 5, airport: 'BOS', clean: false };
+  const out = { count: 8, uni: 'Boston College', hours: 5, airport: 'BOS', clean: false, preset: null, list: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--clean') out.clean = true;
@@ -53,8 +56,12 @@ function parseArgs(argv) {
     else if (a === '--uni') out.uni = argv[++i];
     else if (a === '--hours') out.hours = parseFloat(argv[++i]);
     else if (a === '--airport') out.airport = argv[++i];
+    else if (a === '--preset') out.preset = argv[++i];
+    else if (a === '--list-presets') out.list = true;
     else if (a === '--help' || a === '-h') {
       console.log('See file header for usage.');
+      console.log('  --preset <name>       seed a named scenario (see --list-presets)');
+      console.log('  --list-presets        show available presets and exit');
       process.exit(0);
     } else {
       console.error(`Unknown arg: ${a}`);
@@ -104,22 +111,21 @@ async function cleanSynthetic() {
   const snap = await db.collection('tripRequests').where('synthetic', '==', true).get();
   if (snap.empty) {
     console.log('No synthetic trips found.');
-    return;
-  }
-  let deleted = 0;
-  let batch = db.batch();
-  for (const doc of snap.docs) {
-    batch.delete(doc.ref);
-    deleted++;
-    if (deleted % 400 === 0) {
-      await batch.commit();
-      batch = db.batch();
+  } else {
+    let deleted = 0;
+    let batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref);
+      deleted++;
+      if (deleted % 400 === 0) {
+        await batch.commit();
+        batch = db.batch();
+      }
     }
+    await batch.commit();
+    console.log(`Deleted ${deleted} synthetic trips.`);
   }
-  await batch.commit();
-  console.log(`Deleted ${deleted} synthetic trips.`);
 
-  // Also clean synthetic-* users
   const userSnap = await db.collection('users').where('synthetic', '==', true).get();
   if (!userSnap.empty) {
     let b = db.batch();
@@ -130,7 +136,7 @@ async function cleanSynthetic() {
   }
 }
 
-// ---------- seed ----------
+// ---------- random seed ----------
 const FIRST_NAMES = ['Alex','Sam','Jordan','Taylor','Morgan','Casey','Riley','Quinn','Avery','Blake','Cameron','Drew','Emerson','Finley','Hayden','Jamie'];
 const LAST_NAMES  = ['Lee','Patel','Garcia','Smith','Nguyen','Cohen','Martinez','OBrien','Park','Singh','Khan','Rossi','Tan','Adams','Brown','Davis'];
 const BC_CAMPUS   = ['2k', 'Newton', 'CoRo/Upper', 'Lower'];
@@ -151,14 +157,10 @@ async function seed() {
     const last  = rand(LAST_NAMES);
     const gender = rand(GENDERS);
 
-    // Spread flight times ±90 min around the requested baseline so the
-    // matcher has to actually decide who pairs with whom.
     const offsetMin = randInt(-90, 90);
     const flightDt = new Date(baseMs + offsetMin * 60_000);
-
     const campusArea = args.uni === 'Boston College' ? rand(BC_CAMPUS) : null;
 
-    // Write a synthetic user doc so any UI that joins to the user works.
     await db.collection('users').doc(userId).set({
       id: userId,
       synthetic: true,
@@ -207,9 +209,43 @@ async function seed() {
   console.log('Or use the dev admin page at /dev/matching (NODE_ENV=development).');
 }
 
+// ---------- preset seed ----------
+async function seedPreset(key) {
+  if (!(key in PRESETS)) {
+    console.error(`Unknown preset "${key}". Run with --list-presets.`);
+    process.exit(1);
+  }
+  const baseTime = new Date(Date.now() + args.hours * 3600_000);
+  const runId = Date.now().toString(36);
+  const { users, trips } = materializePreset(key, baseTime, runId);
+
+  for (const u of users) {
+    await db.collection('users').doc(u.id).set(u);
+  }
+  const created = [];
+  for (const t of trips) {
+    const ref = db.collection('tripRequests').doc();
+    await ref.set({ ...t, id: ref.id, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    created.push({ id: ref.id, name: t.userName, when: t.flightDateTime });
+  }
+
+  console.log(`Seeded preset "${key}" (${PRESETS[key].label}):`);
+  for (const t of created) console.log(`  ${t.id}  ${t.name.padEnd(20)}  ${t.when}`);
+  console.log('\nTo pair: open /dev/matching and click "Run manualPairing".');
+}
+
+function listPresets() {
+  console.log('Available presets:');
+  for (const [key, def] of Object.entries(PRESETS)) {
+    console.log(`  ${key.padEnd(24)}  ${def.label}`);
+  }
+}
+
 (async () => {
   try {
+    if (args.list) { listPresets(); process.exit(0); }
     if (args.clean) await cleanSynthetic();
+    else if (args.preset) await seedPreset(args.preset);
     else await seed();
   } catch (e) {
     console.error('Failed:', e);

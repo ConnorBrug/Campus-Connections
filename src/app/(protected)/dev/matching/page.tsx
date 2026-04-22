@@ -4,12 +4,12 @@
  * Dev-only matching dashboard.
  *
  * - Hidden in production: returns 404-like message if NODE_ENV !== 'development'.
+ * - Seed repeatable scenarios (presets) with one click.
  * - Lists every `tripRequests` document with status='pending'.
  * - Lets you pick a time window (in hours from now) and invoke the
  *   `manualPairing` Cloud Function.
- *
- * Pair this with `node scripts/seed-test-trips.mjs` to fabricate a pool of
- * synthetic riders, then trigger pairing here and watch the matches collection.
+ * - "Act as" button next to each pool row mints a session cookie for that
+ *   synthetic user so you can walk through the real UI (chat, profile, etc.).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -20,13 +20,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, RefreshCw, Play, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, Play, Trash2, AlertTriangle, Sprout, UserRound } from 'lucide-react';
 import type { TripRequest, Match } from '@/lib/types';
+import { useRouter } from 'next/navigation';
 
 type PoolRow = TripRequest & { id: string };
+type PresetOption = { key: string; label: string };
 
 export default function DevMatchingPage() {
   const isDev = process.env.NODE_ENV === 'development';
+  const router = useRouter();
   const [pool, setPool] = useState<PoolRow[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,6 +38,10 @@ export default function DevMatchingPage() {
   const [to, setTo] = useState(24);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
+  const [presets, setPresets] = useState<PresetOption[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  const [presetHours, setPresetHours] = useState<number>(5);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
 
   const reload = async () => {
     setLoading(true);
@@ -59,7 +66,16 @@ export default function DevMatchingPage() {
     if (!isDev) return;
     reload();
 
-    // Live-watch the matches collection (last 25)
+    fetch('/api/dev/seed-preset', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('preset list failed'))))
+      .then((data: { presets: PresetOption[] }) => {
+        setPresets(data.presets);
+        if (data.presets[0]) setSelectedPreset(data.presets[0].key);
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+
     const q = query(collection(db, 'matches'), orderBy('assignedAtISO', 'desc'), limit(25));
     const unsub = onSnapshot(q, (snap) => {
       setMatches(snap.docs.map(d => ({ ...(d.data() as Match), id: d.id })));
@@ -89,6 +105,50 @@ export default function DevMatchingPage() {
     }
   };
 
+  const seedPreset = async () => {
+    if (!selectedPreset) return;
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch('/api/dev/seed-preset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ preset: selectedPreset, hoursFromNow: presetHours }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Seed failed');
+      setResult(data);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Seed failed.');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const impersonateUser = async (uid: string) => {
+    setImpersonating(uid);
+    setError(null);
+    try {
+      const res = await fetch('/api/dev/impersonate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ uid }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Impersonation failed');
+      router.push('/main');
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impersonation failed.');
+    } finally {
+      setImpersonating(null);
+    }
+  };
+
   const cleanSynthetic = async () => {
     if (!confirm('Delete every trip flagged synthetic:true?')) return;
     setRunning(true);
@@ -109,7 +169,7 @@ export default function DevMatchingPage() {
   const grouped = useMemo(() => {
     const m = new Map<string, PoolRow[]>();
     for (const t of pool) {
-      const key = `${t.university} · ${t.departingAirport}`;
+      const key = `${t.university} - ${t.departingAirport}`;
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(t);
     }
@@ -138,9 +198,59 @@ export default function DevMatchingPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Seed scenario preset</CardTitle>
+          <CardDescription>
+            Spin up a repeatable matching scenario (synthetic users + trips). Safe to re-run;
+            use &quot;Delete synthetic trips&quot; below to clean up.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px]">
+              <Label htmlFor="preset">Preset</Label>
+              <select
+                id="preset"
+                className="w-full mt-1 rounded-md border bg-background px-3 py-2 text-sm"
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+                disabled={running || presets.length === 0}
+              >
+                {presets.length === 0 && <option value="">Loading...</option>}
+                {presets.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="presetHours">Flight in (hrs from now)</Label>
+              <Input
+                id="presetHours"
+                type="number"
+                min={1}
+                value={presetHours}
+                onChange={(e) => setPresetHours(parseFloat(e.target.value) || 5)}
+                className="w-28"
+              />
+            </div>
+            <Button onClick={seedPreset} disabled={running || !selectedPreset}>
+              {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sprout className="mr-2 h-4 w-4" />}
+              Seed preset
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            After seeding, adjust the pairing window below to bracket the flight time, then click
+            &quot;Run manualPairing.&quot;
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Trigger pairing</CardTitle>
           <CardDescription>
-            Calls the <code>manualPairing</code> Cloud Function. The window is &quot;flights N–M hours from now.&quot;
+            Calls the <code>manualPairing</code> Cloud Function. The window is &quot;flights N-M hours from now.&quot;
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -188,7 +298,7 @@ export default function DevMatchingPage() {
         <CardContent>
           {pool.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nothing pending. Run <code>node scripts/seed-test-trips.mjs</code> to create some.
+              Nothing pending. Run <code>node scripts/seed-test-trips.mjs</code> or seed a preset above.
             </p>
           ) : (
             <div className="space-y-6">
@@ -205,17 +315,31 @@ export default function DevMatchingPage() {
                           <th className="text-left p-2">Bags (carry/check)</th>
                           <th className="text-left p-2">Gender / Pref</th>
                           <th className="text-left p-2">Campus</th>
+                          <th className="text-left p-2">Act as</th>
                         </tr>
                       </thead>
                       <tbody>
                         {trips.map(t => (
                           <tr key={t.id} className="border-t">
-                            <td className="p-2">{t.userName ?? '—'}</td>
+                            <td className="p-2">{t.userName ?? '-'}</td>
                             <td className="p-2">{t.flightCode}</td>
                             <td className="p-2">{new Date(t.flightDateTime).toLocaleString()}</td>
                             <td className="p-2">{t.numberOfCarryons} / {t.numberOfCheckedBags}</td>
                             <td className="p-2">{t.userGender} / {t.userPreferences}</td>
-                            <td className="p-2">{t.campusArea ?? '—'}</td>
+                            <td className="p-2">{t.campusArea ?? '-'}</td>
+                            <td className="p-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => impersonateUser(t.userId)}
+                                disabled={impersonating === t.userId}
+                                title="Sign in as this synthetic user (dev only)"
+                              >
+                                {impersonating === t.userId
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : <UserRound className="h-3 w-3" />}
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -241,8 +365,8 @@ export default function DevMatchingPage() {
               {matches.map(m => (
                 <li key={m.id} className="border rounded-md p-3 text-xs">
                   <div className="font-medium">
-                    {m.matchTier ?? 'standard'} · {m.university} · {m.departingAirport}
-                    <span className="text-muted-foreground"> · {new Date(m.assignedAtISO).toLocaleString()}</span>
+                    {m.matchTier ?? 'standard'} - {m.university} - {m.departingAirport}
+                    <span className="text-muted-foreground"> - {new Date(m.assignedAtISO).toLocaleString()}</span>
                   </div>
                   <div className="mt-1">
                     {Object.values(m.participants).map(p => (

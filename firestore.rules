@@ -24,6 +24,28 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    /* -------- MATCHES (server-managed; participant-gated read) --------
+       Matches are written exclusively by the matching Cloud Functions via
+       the Admin SDK (which bypasses these rules). Clients read their own
+       match docs from chat/planned-trips/match-found. Admin claim can read
+       all matches so the dev-only matching dashboard works. */
+    match /matches/{id} {
+      allow read: if isSignedIn()
+                  && (request.auth.token.admin == true
+                      || request.auth.uid in resource.data.participantIds);
+      allow write: if false;
+    }
+
+    /* -------- FLAGS / CANCELLATIONS (Admin SDK only) --------
+       Written by server routes (flagUser, cancel flows). Clients may not
+       read; admin escape hatch only. */
+    match /flags/{id} {
+      allow read, write: if request.auth.token.admin == true;
+    }
+    match /cancellations/{id} {
+      allow read, write: if request.auth.token.admin == true;
+    }
+
     /* -------- SETTINGS (admin-managed) -------- */
     match /settings/{doc} {
       allow read: if isSignedIn();
@@ -37,8 +59,14 @@ service cloud.firestore {
     function isChatParticipant(chatId) {
       return isSignedIn() && request.auth.uid in chatDoc(chatId).data.userIds;
     }
+    /* Require expiresAt to exist (every chat creation path writes it; see
+       functions/src/matching.ts, functions/src/index.ts, and
+       src/lib/auth.ts#initiateChat). If a legacy chat without expiresAt
+       exists, writes will fail - backfill via a one-off admin script rather
+       than loosening this rule. */
     function chatIsOpen(chatId) {
-      return !('expiresAt' in chatDoc(chatId).data) || request.time < chatDoc(chatId).data.expiresAt;
+      return 'expiresAt' in chatDoc(chatId).data
+             && request.time < chatDoc(chatId).data.expiresAt;
     }
 
     match /chats/{chatId} {
