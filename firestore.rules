@@ -85,7 +85,8 @@ service cloud.firestore {
                       && chatIsOpen(chatId)
                       && request.resource.data.senderId == request.auth.uid
                       && request.resource.data.text is string
-                      && request.resource.data.text.size() > 0;
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 2000;
         allow update, delete: if false;
       }
     }
