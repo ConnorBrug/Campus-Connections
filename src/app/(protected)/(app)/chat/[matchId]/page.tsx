@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { getCurrentUser, getMatchById, getChatId, sendMessage, listenToTypingStatus } from '@/lib/auth';
 import type { UserProfile, Match } from '@/lib/types';
 import { Card } from '@/components/ui/card';
@@ -44,29 +44,45 @@ export default function ChatPage() {
     })().catch(() => router.replace('/main'));
   }, [matchId, router]);
 
-  // Subscribe to messages
+  // Subscribe to messages. Gate on auth.authStateReady() so the snapshot
+  // listener never opens before the Firebase SDK has an authenticated user
+  // attached - otherwise Firestore rules (which require chat participation)
+  // reject the read with permission-denied and the listener is torn down
+  // even after auth hydrates.
   useEffect(() => {
     if (!chatId) return;
-    const qRef = query(
-      collection(db, 'chats', chatId, 'messages'),
-      orderBy('timestamp', 'asc'),
-      limit(500)
-    );
-    const unsub = onSnapshot(qRef, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Msg)));
-      requestAnimationFrame(() => {
-        scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: 'smooth' });
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      await auth.authStateReady();
+      if (cancelled) return;
+      const qRef = query(
+        collection(db, 'chats', chatId, 'messages'),
+        orderBy('timestamp', 'asc'),
+        limit(500)
+      );
+      unsub = onSnapshot(qRef, (snap) => {
+        setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Msg)));
+        requestAnimationFrame(() => {
+          scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: 'smooth' });
+        });
+        setLoading(false);
       });
-      setLoading(false);
-    });
-    return () => unsub();
+    })();
+    return () => { cancelled = true; unsub?.(); };
   }, [chatId]);
 
-  // Typing indicator
+  // Typing indicator - same auth gate as the messages listener.
   useEffect(() => {
     if (!chatId) return;
-    const off = listenToTypingStatus(chatId, setTypingUserId);
-    return () => off();
+    let off: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      await auth.authStateReady();
+      if (cancelled) return;
+      off = listenToTypingStatus(chatId, setTypingUserId);
+    })();
+    return () => { cancelled = true; off?.(); };
   }, [chatId]);
 
   const otherNames = useMemo(() => {
