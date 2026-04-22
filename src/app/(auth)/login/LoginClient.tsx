@@ -3,7 +3,7 @@
 import { useState, type SVGProps } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login, loginWithGoogle } from '@/lib/auth';
+import { login, loginWithGoogle, loginWithMicrosoft } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,17 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
       <path d="M12 11.999h10.5c.1.6.1 1.2.1 1.8 0 6.2-4.2 10.6-10.6 10.6A10.9 10.9 0 0 1 1 13.8c0-6 4.7-10.8 10.7-10.8 2.9 0 5.3 1.1 7 2.9l-3 3c-.8-.8-2-1.7-4-1.7-3.4 0-6.2 2.8-6.2 6.3s2.8 6.3 6.2 6.3c3.9 0 5.4-2.6 5.6-4H12v-4.4z" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function MicrosoftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 23 23" aria-hidden="true" {...props}>
+      <rect x="1"  y="1"  width="10" height="10" fill="#F25022" />
+      <rect x="12" y="1"  width="10" height="10" fill="#7FBA00" />
+      <rect x="1"  y="12" width="10" height="10" fill="#00A4EF" />
+      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
     </svg>
   );
 }
@@ -69,18 +80,19 @@ export default function LoginClient() {
     }
   };
 
-  const handleGoogle = async () => {
+  const handleOAuth = async (providerLabel: 'Google' | 'Microsoft') => {
     setIsSubmitting(true);
     setPageError(null);
     try {
-      const { profile } = await loginWithGoogle(); // session cookie minted
+      const fn = providerLabel === 'Google' ? loginWithGoogle : loginWithMicrosoft;
+      const { profile } = await fn(); // session cookie minted
       if (profileIsIncomplete(profile)) {
         router.replace('/onboarding?next=' + encodeURIComponent('/main'));
       } else {
         router.replace('/main');
       }
     } catch (e) {
-      setPageError(e instanceof Error ? e.message : 'Google sign-in failed.');
+      setPageError(e instanceof Error ? e.message : `${providerLabel} sign-in failed.`);
       setIsSubmitting(false);
     }
   };
@@ -112,15 +124,25 @@ export default function LoginClient() {
           </Alert>
         )}
 
-        <Button type="button" variant="outline" className="w-full mb-4" onClick={handleGoogle}>
-          <GoogleIcon className="mr-2 h-4 w-4" />
-          Continue with Google
-        </Button>
+        <div className="space-y-2 mb-4">
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth('Google')}>
+            <GoogleIcon className="mr-2 h-4 w-4" />
+            Continue with Google
+          </Button>
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth('Microsoft')}>
+            <MicrosoftIcon className="mr-2 h-4 w-4" />
+            Continue with Microsoft
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center mb-4">
+          Use your school email (e.g. @bc.edu, @vanderbilt.edu) to sign in.
+        </p>
 
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">or</span>
+            <span className="bg-card px-2 text-muted-foreground">or password</span>
           </div>
         </div>
 

@@ -1,0 +1,11 @@
+# Firebase-specific files are not part of the Vercel-deployed app bundle.
+# Keeping them ignored reduces upload size and confusion.
+functions/
+firestore.rules
+firestore.indexes.json
+storage.rules
+.firebaserc
+firebase.json
+cors.json
+docs/
+scripts/

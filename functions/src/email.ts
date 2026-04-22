@@ -1,17 +1,24 @@
 // functions/src/email.ts
 import * as nodemailer from 'nodemailer';
-import * as functions from 'firebase-functions';
 import { TripRequest } from './types';
 
-// Configure via Firebase Functions config or env vars.
-// Set with: firebase functions:config:set smtp.host="..." smtp.port="587" smtp.user="..." smtp.pass="..."
-// Or set environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+// Configure via environment variables (secrets).
+//
+// For production, set these with Firebase secrets:
+//   firebase functions:secrets:set SMTP_HOST
+//   firebase functions:secrets:set SMTP_USER
+//   firebase functions:secrets:set SMTP_PASS
+//   (optional) firebase functions:secrets:set SMTP_PORT
+//   (optional) firebase functions:secrets:set APP_URL
+//
+// For local development, put them in functions/.env (gitignored).
+//
+// NOTE: `functions.config()` has been removed in favor of env vars / secrets.
 function getTransporter() {
-  const config = functions.config()?.smtp ?? {};
-  const host = config.host || process.env.SMTP_HOST;
-  const port = parseInt(config.port || process.env.SMTP_PORT || '587', 10);
-  const user = config.user || process.env.SMTP_USER;
-  const pass = config.pass || process.env.SMTP_PASS;
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) return null;
 
@@ -23,8 +30,8 @@ function getTransporter() {
   });
 }
 
-const APP_URL = functions.config()?.app?.url || process.env.APP_URL || 'https://campus-connections.com';
-const FROM_ADDRESS = 'Connections <noreply@campus-connections.com>';
+const APP_URL = process.env.APP_URL || 'https://campus-connections.com';
+const FROM_ADDRESS = process.env.EMAIL_FROM || 'Connections <noreply@campus-connections.com>';
 
 /**
  * Send a match notification email to `recipient`, telling them about `partner`.

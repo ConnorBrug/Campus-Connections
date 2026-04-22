@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-import fs from 'node:fs';
-import path from 'node:path';
 
-const root = process.cwd();
+// Preflight check intended to be run locally before `npm run deploy:firebase`.
+// For the web app itself, Vercel runs its own env-var enforcement; see README.
+
 const requiredEnv = [
   'NEXT_PUBLIC_FIREBASE_API_KEY',
   'NEXT_PUBLIC_FIREBASE_APP_ID',
@@ -38,20 +38,6 @@ const hasServiceJson = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
 const hasSplitAdminCreds = requiredAdminAuth.slice(1).every((k) => Boolean(process.env[k]));
 if (!hasServiceJson && !hasSplitAdminCreds) {
   missing.push('FIREBASE_SERVICE_ACCOUNT_JSON (or FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)');
-}
-
-const appHostingPath = path.join(root, 'apphosting.yaml');
-if (!fs.existsSync(appHostingPath)) {
-  console.error('Missing apphosting.yaml.');
-  process.exit(1);
-}
-
-const appHosting = fs.readFileSync(appHostingPath, 'utf8');
-for (const key of requiredEnv) {
-  if (!appHosting.includes(`variable: ${key}`)) {
-    console.error(`apphosting.yaml is missing env binding for ${key}.`);
-    process.exit(1);
-  }
 }
 
 if (missing.length > 0) {

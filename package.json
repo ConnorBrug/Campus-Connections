@@ -15,8 +15,10 @@
     "set:matching:high-demand": "node scripts/set-matching-settings.mjs --manualBoardEnabled=false --highDemandPeriod=true",
     "deploy:rules": "firebase deploy --only firestore:rules,storage",
     "deploy:functions": "npm run -s build --prefix functions && firebase deploy --only functions",
-    "deploy:app": "firebase deploy --only hosting",
-    "deploy:all": "npm run -s check:prod && npm run -s deploy:rules && npm run -s deploy:functions && npm run -s deploy:app"
+    "deploy:cors": "gcloud storage buckets update gs://$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET --cors-file=cors.json",
+    "deploy:firebase": "npm run -s check:prod && npm run -s deploy:rules && npm run -s deploy:functions",
+    "seed:trips": "node scripts/seed-test-trips.mjs",
+    "seed:trips:clean": "node scripts/seed-test-trips.mjs --clean"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

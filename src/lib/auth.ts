@@ -16,8 +16,11 @@ import {
   sendEmailVerification,
   signInWithPopup,
   GoogleAuthProvider,
+  OAuthProvider,
+  type AuthProvider,
   type User as FirebaseUser,
 } from 'firebase/auth';
+import { emailToUniversityName } from './universities';
 import {
   doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs,
   runTransaction, writeBatch, limit, addDoc, serverTimestamp, onSnapshot, deleteDoc
@@ -57,19 +60,14 @@ const isAllowedEmail = (email: string): boolean =>
 /**
  * Maps an email to a university label if it matches a known domain.
  * Also allows explicit whitelist overrides by returning "Whitelisted".
+ *
+ * The actual domain → university mapping lives in `src/lib/universities.ts`.
+ * To add a new school, edit that file — nothing else needs to change.
  */
 const emailToUniversity = (email: string): string | null => {
   const e = (email || '').toLowerCase();
-
-  // ✅ explicit bypass for non-university domains
   if (isWhitelisted(e)) return 'Whitelisted';
-
-  if (e.endsWith('@bc.edu')) return 'Boston College';
-  if (e.endsWith('@vanderbilt.edu')) return 'Vanderbilt';
-  if (process.env.NODE_ENV === 'development' && e.endsWith('@gmail.com')) {
-    return 'CollegeU';
-  }
-  return null;
+  return emailToUniversityName(e);
 };
 
 const omitUndefined = <T extends Record<string, any>>(obj: T) =>
@@ -199,23 +197,48 @@ export async function logoutAndRedirectClientSide(): Promise<void> {
   if (typeof window !== 'undefined') window.location.href = '/login?logged_out=true';
 }
 
-/* ---------------------------- Google sign-in ------------------------------ */
+/* ---------------------------- OAuth sign-in ------------------------------ */
 
-export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
+type OAuthProviderName = 'google' | 'microsoft';
+
+/**
+ * Shared OAuth sign-in. Google uses the native GoogleAuthProvider; Microsoft
+ * uses the generic OAuthProvider('microsoft.com'). Both enforce a verified
+ * school email (or whitelist) and infer the university from the email domain.
+ */
+async function loginWithOAuth(
+  providerName: OAuthProviderName,
+): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
   await setPersistence(auth, browserLocalPersistence);
 
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
+  let provider: AuthProvider;
+  if (providerName === 'google') {
+    const p = new GoogleAuthProvider();
+    p.setCustomParameters({ prompt: 'select_account' });
+    provider = p;
+  } else {
+    // Microsoft via generic OAuthProvider. tenant=organizations restricts to
+    // work/school accounts (excludes personal @outlook.com / @live.com).
+    const p = new OAuthProvider('microsoft.com');
+    p.setCustomParameters({ prompt: 'select_account', tenant: 'organizations' });
+    p.addScope('openid');
+    p.addScope('email');
+    p.addScope('profile');
+    provider = p;
+  }
 
   const result = await signInWithPopup(auth, provider);
   const user = result.user;
   const email = (user.email ?? '').toLowerCase();
 
-  const uni = emailToUniversity(email); // returns 'Whitelisted' for allowed exceptions
+  const uni = emailToUniversity(email);
 
   if (!uni) {
     await signOut(auth);
-    throw new Error('Please sign in with a valid university email (e.g., @bc.edu, @vanderbilt.edu).');
+    throw new Error(
+      `This app is restricted to school email addresses. ` +
+      `Please sign in with your university account (e.g. @bc.edu, @vanderbilt.edu).`
+    );
   }
 
   const userDocRef = doc(db, 'users', user.uid);
@@ -231,20 +254,18 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
       id: user.uid,
       name: rawName,
       email,
-      university: uni,               // <-- may be 'Whitelisted'
+      university: uni,
       photoUrl: user.photoURL || undefined,
-      emailVerified: true,           // Google provider is verified
+      emailVerified: true, // OAuth providers give verified emails
       isBanned: false,
+      authProvider: providerName,
     });
     await setDoc(userDocRef, data as UserProfile, { merge: true });
 
-    // Also update fb auth profile with normalized name
     if (user.displayName !== rawName) {
       try { await fbUpdateProfile(user, { displayName: rawName }); } catch {}
     }
-
   } else {
-    // If user exists, ensure their name is normalized in our system
     const existingData = existing.data() as UserProfile;
     const normalizedName = normalizeName(existingData.name ?? '');
     if (normalizedName !== existingData.name) {
@@ -262,11 +283,14 @@ export async function loginWithGoogle(): Promise<{ profile: UserProfile; user: F
     credentials: 'include',
     body: JSON.stringify({ idToken }),
   });
-  if (!res.ok) throw new Error('Failed to create server session after Google sign-in.');
+  if (!res.ok) throw new Error(`Failed to create server session after ${providerName} sign-in.`);
 
   const profile = (await getDoc(userDocRef)).data() as UserProfile;
   return { profile, user, isNew };
 }
+
+export const loginWithGoogle = () => loginWithOAuth('google');
+export const loginWithMicrosoft = () => loginWithOAuth('microsoft');
 
 /* ----------------------------- current user ----------------------------- */
 
@@ -316,9 +340,29 @@ export async function uploadProfilePhoto(userId: string, file: File): Promise<st
     });
   }
 
-  const path = `profile-photos/${userId}/${Date.now()}-${file.name}`;
+  // Compress the image in the browser before upload so we stay well under the
+  // 5 MB Storage-rule cap and reduce mobile-upload latency. Falls back to the
+  // original file if compression fails for any reason.
+  let toUpload: Blob = file;
+  try {
+    const imageCompression = (await import('browser-image-compression')).default;
+    toUpload = await imageCompression(file, {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1024,
+      useWebWorker: true,
+      fileType: 'image/jpeg',
+    });
+  } catch (err) {
+    // Non-fatal: upload original file if compression fails
+    console.warn('[uploadProfilePhoto] compression skipped:', err);
+  }
+
+  // Sanitize filename (spaces / special chars can cause issues in some edge
+  // cases with Storage download URLs)
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `profile-photos/${userId}/${Date.now()}-${safeName}`;
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file, { contentType: file.type });
+  await uploadBytes(storageRef, toUpload, { contentType: 'image/jpeg' });
   return getDownloadURL(storageRef);
 }
 
@@ -366,7 +410,14 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
-  await sendPasswordResetEmail(auth, email);
+  // Pass a continueUrl so the "Back to <app>" link after Firebase's reset
+  // lands on our domain (campus-connections.com) rather than the default
+  // Firebase project URL. Requires the domain to be in Firebase Auth's
+  // Authorized Domains list.
+  await sendPasswordResetEmail(auth, email, {
+    url: `${getBaseUrl()}/login`,
+    handleCodeInApp: false,
+  });
 }
 
 export async function sendVerificationEmailAgain(): Promise<void> {

@@ -6,20 +6,13 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "placehold.co", pathname: "/**" },
       { protocol: "https", hostname: "firebasestorage.googleapis.com", pathname: "/**" },
+      // Firebase Storage download host for new buckets (*.firebasestorage.app)
+      { protocol: "https", hostname: "*.firebasestorage.app", pathname: "/**" },
     ],
   },
 
-  // ✅ new key (replaces experimental.serverComponentsExternalPackages)
+  // Keep firebase-admin as an external server package
   serverExternalPackages: ["firebase-admin"],
-
-  // ✅ allow Firebase Studio preview origins only in development
-  ...(process.env.NODE_ENV !== "production" && {
-    allowedDevOrigins: [
-      "9002-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-      "https://6000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-      "https://9000-firebase-studio-1752880504974.cluster-f4iwdviaqvc2ct6pgytzw4xqy4.cloudworkstations.dev",
-    ],
-  }),
 
   async headers() {
     return [

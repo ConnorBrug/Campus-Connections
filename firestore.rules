@@ -26,7 +26,7 @@ service cloud.firestore {
 
     /* -------- SETTINGS (admin-managed) -------- */
     match /settings/{doc} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow write: if request.auth.token.admin == true;
     }
 

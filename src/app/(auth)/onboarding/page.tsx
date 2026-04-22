@@ -10,7 +10,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, UserCheck, AlertTriangle } from 'lucide-react';
 
 import { getCurrentUser, updateUserProfile } from '@/lib/auth';
@@ -21,6 +22,9 @@ import { normalizeName } from '@/lib/utils';
 const currentYear = new Date().getFullYear();
 const validYears = [currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(String);
 
+// E.164-ish phone: optional leading +, 10-15 digits. Empty allowed (optional).
+const PHONE_RE = /^\+?[0-9]{10,15}$/;
+
 const Schema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
   lastName: z.string().min(1, 'Last name is required.'),
@@ -28,6 +32,13 @@ const Schema = z.object({
   graduationYear: z.string({ required_error: 'Please select your graduation year.' })
     .refine(v => validYears.includes(v), { message: 'Please select a valid graduation year.' }),
   campusArea: z.string().optional(),
+  // Phone is fully optional. If present it must look like a phone number.
+  // SMS opt-in is downgraded silently at save time when no phone is provided.
+  phoneNumber: z.string().optional().refine(
+    (v) => !v || PHONE_RE.test(v.replace(/[\s\-()]/g, '')),
+    { message: 'Enter a valid phone number (e.g. +15555550123) or leave blank.' },
+  ),
+  smsNotificationsEnabled: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof Schema>;
@@ -51,7 +62,15 @@ export default function OnboardingPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(Schema),
     mode: 'onChange',
-    defaultValues: { firstName: '', lastName: '', gender: undefined, graduationYear: undefined, campusArea: undefined },
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      gender: undefined,
+      graduationYear: undefined,
+      campusArea: undefined,
+      phoneNumber: '',
+      smsNotificationsEnabled: false,
+    },
   });
 
   useEffect(() => {
@@ -66,7 +85,15 @@ export default function OnboardingPage() {
         const gradYear = me.graduationYear ? String(me.graduationYear) : undefined;
         const campus = me.university === 'Boston College' ? toUndef(me.campusArea) : undefined;
 
-        form.reset({ firstName: first, lastName: last, gender, graduationYear: gradYear, campusArea: campus });
+        form.reset({
+          firstName: first,
+          lastName: last,
+          gender,
+          graduationYear: gradYear,
+          campusArea: campus,
+          phoneNumber: me.phoneNumber ?? '',
+          smsNotificationsEnabled: !!me.smsNotificationsEnabled,
+        });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load your profile.');
       } finally {
@@ -92,10 +119,16 @@ export default function OnboardingPage() {
     try {
       const normalizedFullName = normalizeName(`${values.firstName} ${values.lastName}`);
 
+      // Normalize phone: strip spaces / dashes / parens. Empty => null (clear).
+      const rawPhone = (values.phoneNumber ?? '').replace(/[\s\-()]/g, '');
+      const phoneToSave = rawPhone ? (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`) : null;
+
       await updateUserProfile(profile.id, {
         name: normalizedFullName,
         gender: values.gender,
         graduationYear: parseInt(values.graduationYear, 10),
+        phoneNumber: phoneToSave,
+        smsNotificationsEnabled: !!values.smsNotificationsEnabled && !!phoneToSave,
         ...(showCampus ? { campusArea: values.campusArea } : {}),
       });
 
@@ -213,8 +246,57 @@ export default function OnboardingPage() {
                 )}/>
               )}
 
+              <div className="rounded-md border p-4 space-y-3 bg-muted/20">
+                <FormField name="phoneNumber" control={form.control} render={({ field }) => {
+                  const phoneValue = (field.value ?? '').trim();
+                  const phoneOk = !phoneValue || PHONE_RE.test(phoneValue.replace(/[\s\-()]/g, ''));
+                  const hasUsablePhone = phoneOk && phoneValue.length > 0;
+                  return (
+                    <>
+                      <FormItem>
+                        <FormLabel>Phone number <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            placeholder="+1 555 555 0123"
+                            {...field}
+                            value={field.value ?? ''}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Optional. Only used to text you about new matches - never shared.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+
+                      <FormField name="smsNotificationsEnabled" control={form.control} render={({ field: smsField }) => (
+                        <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              id="smsNotificationsEnabled"
+                              disabled={!hasUsablePhone}
+                              checked={hasUsablePhone && !!smsField.value}
+                              onCheckedChange={(v) => smsField.onChange(Boolean(v) && hasUsablePhone)}
+                            />
+                          </FormControl>
+                          <label
+                            htmlFor="smsNotificationsEnabled"
+                            className={`text-sm font-normal leading-snug ${hasUsablePhone ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}
+                          >
+                            Text me when I get matched. Standard messaging rates may apply.
+                            {!hasUsablePhone && <span className="block text-[11px] mt-0.5">Add a phone number above to enable.</span>}
+                          </label>
+                        </FormItem>
+                      )}/>
+                    </>
+                  );
+                }}/>
+              </div>
+
               <Button type="submit" className="w-full" disabled={!form.formState.isValid || saving}>
-                {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>) : 'Continue'}
+                {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving</>) : 'Continue'}
               </Button>
             </form>
           </Form>
