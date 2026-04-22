@@ -270,8 +270,13 @@ export function materializePreset(key, baseTime, runId) {
   const users = [];
   const trips = [];
 
+  // Stable user IDs per (preset, index): re-seeding the same preset reuses
+  // the same synthetic uids so cross-browser chat testing works (both browsers
+  // impersonate the same uid from their respective runs). The runId param is
+  // kept for signature compatibility with older callers.
+  void runId;
   specs.forEach((spec, i) => {
-    const userId = synthId(`${key}-${runId}`, i);
+    const userId = synthId(key, i);
     const email = `${userId}@example.test`.toLowerCase();
     const flightDt = new Date(baseTime.getTime() + spec.offsetMinutes * 60_000);
 
