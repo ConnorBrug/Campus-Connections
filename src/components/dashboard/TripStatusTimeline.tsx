@@ -60,8 +60,10 @@ export function TripStatusTimeline({ status }: TripStatusTimelineProps) {
   return (
     <div className="space-y-6">
       <div className="relative space-y-8 pl-4">
-          {/* Vertical line */}
-          <div className="absolute left-[24px] top-4 h-[calc(100%-2rem)] w-0.5 bg-border -translate-x-1/2"></div>
+          {/* Vertical line - left-9 (2.25rem) centers on the 2.5rem circles
+              after the container's pl-4 (1rem) offset; -translate-x-1/2 then
+              bisects the 0.5 line itself. Avoids magic left-[24px] pixel. */}
+          <div className="absolute left-9 top-4 h-[calc(100%-2rem)] w-0.5 bg-border -translate-x-1/2"></div>
           {steps.map((step, index) => (
             <TimelineStep key={index} {...step} />
           ))}
