@@ -46,6 +46,48 @@ export async function POST(req: Request) {
       runId,
     );
 
+    // Idempotency: user ids are deterministic per (preset, index) so re-seeding
+    // the same preset would otherwise leave stale trip requests and match docs
+    // with stale flight times. Wipe any prior synthetic tripRequests + matches
+    // for these uids before re-writing. We leave chat messages alone; the
+    // matching runner writes a deterministic __system_init message and will
+    // overwrite it on the next pairing run, while real user messages are
+    // preserved for cross-browser test continuity.
+    const synthUserIds = users.map((u) => u.id);
+    if (synthUserIds.length > 0) {
+      // Firestore `in` and `array-contains-any` clauses cap at 10 elements;
+      // every current preset has <= 10 riders, but slice defensively so a
+      // larger preset doesn't throw at query build time.
+      const idSlice = synthUserIds.slice(0, 10);
+
+      const staleTrips = await adminDb
+        .collection('tripRequests')
+        .where('userId', 'in', idSlice)
+        .get();
+      const staleMatches = await adminDb
+        .collection('matches')
+        .where('participantIds', 'array-contains-any', idSlice)
+        .get();
+
+      if (!staleTrips.empty || !staleMatches.empty) {
+        let batch = adminDb.batch();
+        let i = 0;
+        const queueDelete = (ref: FirebaseFirestore.DocumentReference) => {
+          batch.delete(ref);
+          i += 1;
+        };
+        staleTrips.docs.forEach((d) => queueDelete(d.ref));
+        staleMatches.docs.forEach((d) => queueDelete(d.ref));
+        // Commit in 400-doc chunks to stay under the 500-op batch limit.
+        if (i >= 400) {
+          await batch.commit();
+          batch = adminDb.batch();
+          i = 0;
+        }
+        if (i > 0) await batch.commit();
+      }
+    }
+
     // Write users first so any UI that joins on userId renders immediately.
     {
       let batch = adminDb.batch();
