@@ -16,8 +16,6 @@ import {
   sendEmailVerification,
   signInWithPopup,
   GoogleAuthProvider,
-  OAuthProvider,
-  type AuthProvider,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { emailToUniversityName } from './universities';
@@ -199,33 +197,19 @@ export async function logoutAndRedirectClientSide(): Promise<void> {
 
 /* ---------------------------- OAuth sign-in ------------------------------ */
 
-type OAuthProviderName = 'google' | 'microsoft';
+type OAuthProviderName = 'google';
 
 /**
- * Shared OAuth sign-in. Google uses the native GoogleAuthProvider; Microsoft
- * uses the generic OAuthProvider('microsoft.com'). Both enforce a verified
- * school email (or whitelist) and infer the university from the email domain.
+ * Google OAuth sign-in. Enforces a verified school email (or whitelist) and
+ * infers the university from the email domain.
  */
 async function loginWithOAuth(
   providerName: OAuthProviderName,
 ): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
   await setPersistence(auth, browserLocalPersistence);
 
-  let provider: AuthProvider;
-  if (providerName === 'google') {
-    const p = new GoogleAuthProvider();
-    p.setCustomParameters({ prompt: 'select_account' });
-    provider = p;
-  } else {
-    // Microsoft via generic OAuthProvider. tenant=organizations restricts to
-    // work/school accounts (excludes personal @outlook.com / @live.com).
-    const p = new OAuthProvider('microsoft.com');
-    p.setCustomParameters({ prompt: 'select_account', tenant: 'organizations' });
-    p.addScope('openid');
-    p.addScope('email');
-    p.addScope('profile');
-    provider = p;
-  }
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
 
   const result = await signInWithPopup(auth, provider);
   const user = result.user;
@@ -290,7 +274,6 @@ async function loginWithOAuth(
 }
 
 export const loginWithGoogle = () => loginWithOAuth('google');
-export const loginWithMicrosoft = () => loginWithOAuth('microsoft');
 
 /* ----------------------------- current user ----------------------------- */
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loginWithGoogle, loginWithMicrosoft } from "@/lib/auth";
+import { loginWithGoogle } from "@/lib/auth";
 import { useState, type SVGProps } from "react";
 import { CarFront, AlertTriangle, Loader2 } from "lucide-react";
 import { profileIsIncomplete } from '@/lib/types';
@@ -17,28 +17,20 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function MicrosoftIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 23 23" aria-hidden="true" {...props}>
-      <rect x="1"  y="1"  width="10" height="10" fill="#F25022" />
-      <rect x="12" y="1"  width="10" height="10" fill="#7FBA00" />
-      <rect x="1"  y="12" width="10" height="10" fill="#00A4EF" />
-      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-    </svg>
-  );
-}
-
 export default function SignupClient() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  // Inline-only OAuth spinner - never lock the whole page, since Firebase's
+  // popup-closed detection can take up to a minute to fire if the user X's
+  // the Google window mid-flow.
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [pageError, setPageError] = useState<React.ReactNode | null>(null);
 
-  const handleOAuth = async (providerLabel: 'Google' | 'Microsoft') => {
-    setIsLoading(true);
+  const handleGoogle = async () => {
+    if (isGoogleSubmitting) return;
+    setIsGoogleSubmitting(true);
     setPageError(null);
     try {
-      const fn = providerLabel === 'Google' ? loginWithGoogle : loginWithMicrosoft;
-      const { profile, isNew } = await fn();
+      const { profile, isNew } = await loginWithGoogle();
       // New users always go through onboarding (to capture grad year, gender,
       // optional phone, BC campus area). Existing users with incomplete
       // profiles also get redirected.
@@ -48,19 +40,16 @@ export default function SignupClient() {
         router.replace('/main');
       }
     } catch (e) {
-      setPageError(e instanceof Error ? e.message : `${providerLabel} sign-up failed.`);
-      setIsLoading(false);
+      const code = (e as { code?: string })?.code;
+      // Silently ignore user-initiated popup cancellations - no error banner needed.
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setIsGoogleSubmitting(false);
+        return;
+      }
+      setPageError(e instanceof Error ? e.message : 'Google sign-up failed.');
+      setIsGoogleSubmitting(false);
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="w-full flex flex-col items-center justify-center py-10">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="mt-2 text-muted-foreground">Setting up your account...</p>
-      </div>
-    );
-  }
 
   return (
     <Card className="w-full max-w-md mx-auto shadow-xl my-8">
@@ -88,13 +77,20 @@ export default function SignupClient() {
         )}
 
         <div className="space-y-3">
-          <Button type="button" variant="outline" className="w-full h-11" onClick={() => handleOAuth('Google')}>
-            <GoogleIcon className="mr-2 h-5 w-5" />
-            Continue with Google
-          </Button>
-          <Button type="button" variant="outline" className="w-full h-11" onClick={() => handleOAuth('Microsoft')}>
-            <MicrosoftIcon className="mr-2 h-5 w-5" />
-            Continue with Microsoft
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11"
+            onClick={handleGoogle}
+            disabled={isGoogleSubmitting}
+            aria-busy={isGoogleSubmitting}
+          >
+            {isGoogleSubmitting ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <GoogleIcon className="mr-2 h-5 w-5" />
+            )}
+            {isGoogleSubmitting ? 'Opening Google...' : 'Continue with Google'}
           </Button>
         </div>
 
@@ -102,7 +98,7 @@ export default function SignupClient() {
           <p className="font-medium text-foreground mb-1">Why only school accounts?</p>
           <p>
             We restrict sign-ups to verified university emails (e.g. @bc.edu, @vanderbilt.edu).
-            Your school is detected automatically from your email — no manual verification needed.
+            Your school is detected automatically from your email - no manual verification needed.
           </p>
         </div>
 

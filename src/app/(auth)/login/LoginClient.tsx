@@ -3,13 +3,14 @@
 import { useState, type SVGProps } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { login, loginWithGoogle, loginWithMicrosoft } from '@/lib/auth';
+import { login, loginWithGoogle } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CarFront, LogIn, AlertTriangle, Loader2 } from 'lucide-react';
+import { profileIsIncomplete } from '@/lib/types';
 
 function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -19,29 +20,20 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function MicrosoftIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 23 23" aria-hidden="true" {...props}>
-      <rect x="1"  y="1"  width="10" height="10" fill="#F25022" />
-      <rect x="12" y="1"  width="10" height="10" fill="#7FBA00" />
-      <rect x="1"  y="12" width="10" height="10" fill="#00A4EF" />
-      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-    </svg>
-  );
-}
-
-import { profileIsIncomplete } from '@/lib/types';
-
 export default function LoginClient() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Password-login spinner: locks the whole page (user committed to a specific credential).
+  const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
+  // OAuth spinner: inline only - page stays interactive because the user may X the
+  // popup, and Firebase's popup-closed detection can take up to a minute to fire.
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    setIsPasswordSubmitting(true);
     setPageError(null);
     try {
       const { user, profile } = await login(email, password);
@@ -76,28 +68,34 @@ export default function LoginClient() {
       } else {
         setPageError(message);
       }
-      setIsSubmitting(false);
+      setIsPasswordSubmitting(false);
     }
   };
 
-  const handleOAuth = async (providerLabel: 'Google' | 'Microsoft') => {
-    setIsSubmitting(true);
+  const handleGoogle = async () => {
+    if (isGoogleSubmitting) return;
+    setIsGoogleSubmitting(true);
     setPageError(null);
     try {
-      const fn = providerLabel === 'Google' ? loginWithGoogle : loginWithMicrosoft;
-      const { profile } = await fn(); // session cookie minted
+      const { profile } = await loginWithGoogle(); // session cookie minted
       if (profileIsIncomplete(profile)) {
         router.replace('/onboarding?next=' + encodeURIComponent('/main'));
       } else {
         router.replace('/main');
       }
     } catch (e) {
-      setPageError(e instanceof Error ? e.message : `${providerLabel} sign-in failed.`);
-      setIsSubmitting(false);
+      const code = (e as { code?: string })?.code;
+      // Silently ignore user-initiated popup cancellations - no error banner needed.
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setIsGoogleSubmitting(false);
+        return;
+      }
+      setPageError(e instanceof Error ? e.message : 'Google sign-in failed.');
+      setIsGoogleSubmitting(false);
     }
   };
 
-  if (isSubmitting) {
+  if (isPasswordSubmitting) {
     return (
       <div className="w-full flex flex-col items-center justify-center py-10">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -125,13 +123,20 @@ export default function LoginClient() {
         )}
 
         <div className="space-y-2 mb-4">
-          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth('Google')}>
-            <GoogleIcon className="mr-2 h-4 w-4" />
-            Continue with Google
-          </Button>
-          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth('Microsoft')}>
-            <MicrosoftIcon className="mr-2 h-4 w-4" />
-            Continue with Microsoft
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogle}
+            disabled={isGoogleSubmitting}
+            aria-busy={isGoogleSubmitting}
+          >
+            {isGoogleSubmitting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <GoogleIcon className="mr-2 h-4 w-4" />
+            )}
+            {isGoogleSubmitting ? 'Opening Google...' : 'Continue with Google'}
           </Button>
         </div>
 
