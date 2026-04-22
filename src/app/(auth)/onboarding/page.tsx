@@ -61,7 +61,11 @@ export default function OnboardingPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(Schema),
-    mode: 'onChange',
+    // onTouched = don't paint the form red on first render. Labels only
+    // highlight after the user has interacted with a field (and left it empty),
+    // or after a failed submit when every missing field lights up with an
+    // inline FormMessage. Matches TripDetailsForm's behaviour.
+    mode: 'onTouched',
     defaultValues: {
       firstName: '',
       lastName: '',
@@ -295,7 +299,13 @@ export default function OnboardingPage() {
                 }}/>
               </div>
 
-              <Button type="submit" className="w-full" disabled={!form.formState.isValid || saving}>
+              {/*
+                Keep submit enabled even while the form is invalid — that way a
+                confused user who clicks Continue with missing fields gets the
+                inline FormMessage errors + focus on the first invalid field,
+                instead of a silently-disabled button with no feedback.
+              */}
+              <Button type="submit" className="w-full" disabled={saving}>
                 {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving</>) : 'Continue'}
               </Button>
             </form>

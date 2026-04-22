@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { useEffect, useMemo, useState, startTransition } from 'react';
+import { useEffect, useState, startTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-
 import { cn } from '@/lib/utils';
-import { format, parse, startOfToday, addHours, isBefore } from 'date-fns';
+import { format, parse, startOfToday, addHours, addMinutes } from 'date-fns';
 import {
-  Plane, Ticket, Clock, PlaneTakeoff, Backpack, Luggage, Calendar as CalendarIcon, Users, Loader2, Info,
+  Plane, Ticket, Clock, PlaneTakeoff, Backpack, Luggage, Calendar as CalendarIcon, Users, Loader2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -53,20 +51,36 @@ const periods = ['AM', 'PM'] as const;
 const hours = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
 const minutes = ['00', '15', '30', '45'] as const;
 
-const TripDetailsSchema = z.object({
-  userId: z.string().min(1, 'User ID is required.'),
-  university: z.string().min(1, 'University is required.'),
-  flightCode: z.string().min(3, 'Flight code required.').regex(/^[a-zA-Z0-9]+$/, 'Alphanumeric only.'),
-  flightDate: z.date(),
-  flightHour: z.string().min(1),
-  flightMinute: z.string().min(1),
-  flightPeriod: z.enum(periods),
-  departingAirport: z.enum(AIRPORT_CODES),
-  numberOfCarryons: z.coerce.number().min(0).max(2),
-  numberOfCheckedBags: z.coerce.number().min(0).max(3),
-  preferredMatchGender: z.enum(['Male', 'Female', 'No preference']),
-  campusArea: z.string().optional(),
-});
+const TripDetailsSchema = z
+  .object({
+    userId: z.string().min(1, 'User ID is required.'),
+    university: z.string().min(1, 'University is required.'),
+    flightCode: z.string().min(3, 'Flight code required.').regex(/^[a-zA-Z0-9]+$/, 'Alphanumeric only.'),
+    flightDate: z.date({ required_error: 'Pick a departure date.' }),
+    flightHour: z.string().min(1, 'Pick an hour.'),
+    flightMinute: z.string().min(1, 'Pick minutes.'),
+    flightPeriod: z.enum(periods),
+    departingAirport: z.enum(AIRPORT_CODES),
+    numberOfCarryons: z.coerce.number().min(0).max(2),
+    numberOfCheckedBags: z.coerce.number().min(0).max(3),
+    preferredMatchGender: z.enum(['Male', 'Female', 'No preference']),
+    campusArea: z.string().optional(),
+  })
+  // Reject flights less than 3h from now at validation time. The error is
+  // attached to flightHour so it renders inline under the time picker
+  // (instead of the old full-width red banner).
+  .superRefine((v, ctx) => {
+    if (!v.flightDate || !v.flightHour || !v.flightMinute || !v.flightPeriod) return;
+    const dtStr = `${format(v.flightDate, 'yyyy-MM-dd')} ${v.flightHour}:${v.flightMinute} ${v.flightPeriod}`;
+    const dt = parse(dtStr, 'yyyy-MM-dd h:mm a', new Date());
+    if (dt.getTime() < addHours(new Date(), 3).getTime()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['flightHour'],
+        message: 'Flight must be at least 3 hours from now.',
+      });
+    }
+  });
 type TripDetailsFormValues = z.infer<typeof TripDetailsSchema>;
 
 interface TripDetailsFormProps {
@@ -86,16 +100,45 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
   const airports = userUniversity === 'Vanderbilt' ? tennesseeAirports : massachusettsAirports;
   const defaultAirport: AirportCode = userUniversity === 'Vanderbilt' ? 'BNA' : 'BOS';
 
+  // Smallest valid time: now + 3h, rounded up to the next 15-min slot. We seed
+  // the date/time fields with this so the form is submittable immediately and
+  // users don't see a "pick a later time" warning on first render.
+  function computeMinDepartureParts() {
+    let dt = addHours(new Date(), 3);
+    const mins = dt.getMinutes();
+    const rounded = Math.ceil(mins / 15) * 15;
+    dt = addMinutes(dt, rounded - mins);
+    if (rounded === 60) {
+      // Math.ceil(60/15)*15 === 60 can happen; normalise by letting date-fns
+      // roll the hour over via addMinutes above (mins became 60 → hour+1, m=0).
+    }
+    const hour24 = dt.getHours();
+    const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+    return {
+      date: new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()),
+      hour: String(hour12).padStart(2, '0'),
+      minute: String(dt.getMinutes()).padStart(2, '0'),
+      period: hour24 >= 12 ? ('PM' as const) : ('AM' as const),
+    };
+  }
+
+  const initialParts = computeMinDepartureParts();
+
   const form = useForm<TripDetailsFormValues>({
     resolver: zodResolver(TripDetailsSchema),
+    // onTouched = validation fires after a field loses focus (or on submit).
+    // Nothing is red on first render, but once a user tabs away from an empty
+    // field it highlights, and a failed submit paints every missing field red
+    // with inline messages so they always know what's blocking.
+    mode: 'onTouched',
     defaultValues: {
       userId: userId ?? '',
       university: userUniversity ?? '',
       flightCode: '',
-      flightDate: undefined as unknown as Date,
-      flightHour: '02',
-      flightMinute: '30',
-      flightPeriod: 'PM',
+      flightDate: initialParts.date,
+      flightHour: initialParts.hour,
+      flightMinute: initialParts.minute,
+      flightPeriod: initialParts.period,
       departingAirport: defaultAirport,
       numberOfCarryons: 0,
       numberOfCheckedBags: 0,
@@ -103,27 +146,10 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
     },
   });
 
-  const watched = form.watch();
-
-  const isTimeInvalid = useMemo(() => {
-    if (!watched.flightDate || !watched.flightHour || !watched.flightMinute || !watched.flightPeriod) {
-      return false;
-    }
-    const timeStr = `${watched.flightHour}:${watched.flightMinute} ${watched.flightPeriod}`;
-    const dtStr = `${format(watched.flightDate, 'yyyy-MM-dd')} ${timeStr}`;
-    const dt = parse(dtStr, 'yyyy-MM-dd h:mm a', new Date());
-    const threeHoursFromNow = addHours(new Date(), 3);
-    return isBefore(dt, threeHoursFromNow);
-  }, [watched]);
-
   useEffect(() => {
     setIsClient(true);
-    const today = startOfToday();
-    setMinCalendarDate(today);
-    if (!form.getValues('flightDate')) {
-      form.setValue('flightDate', today, { shouldValidate: true });
-    }
-  }, [form]);
+    setMinCalendarDate(startOfToday());
+  }, []);
 
   async function onSubmit(values: TripDetailsFormValues) {
     const timeStr = `${values.flightHour}:${values.flightMinute} ${values.flightPeriod}`;
@@ -313,7 +339,9 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
                       )}
                     />
                   </div>
-                  <FormDescription>The time your flight begins boarding.</FormDescription>
+                  <FormDescription>
+                    The time your flight begins boarding. Must be at least 3 hours from now.
+                  </FormDescription>
                 </FormItem>
 
                 {/* Airport */}
@@ -428,19 +456,10 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
               </div>
             </fieldset>
 
-            {isTimeInvalid && (
-              <Alert variant="destructive" className="mt-2">
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Trip requests must be for a flight at least 3 hours from now. Please select a later time or date.
-                </AlertDescription>
-              </Alert>
-            )}
-
             <Button
               type="submit"
               className="w-full"
-              disabled={isTripPending || form.formState.isSubmitting || !isClient || isTimeInvalid}
+              disabled={isTripPending || form.formState.isSubmitting || !isClient}
             >
               {form.formState.isSubmitting ? (
                 <>
@@ -454,7 +473,7 @@ export function TripDetailsForm({ userId, userUniversity, isTripPending }: TripD
               )}
             </Button>
           </form>
-        </Form>
+   </Form>
       </CardContent>
     </Card>
   );
