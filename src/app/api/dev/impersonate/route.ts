@@ -3,7 +3,10 @@
  *
  * POST /api/dev/impersonate  { uid: string }
  *   → mints a __session cookie for the target user so the browser is now
- *     signed in as them.
+ *     signed in as them. Also returns a customToken so the client-side
+ *     Firebase SDK can be signed in via signInWithCustomToken (the __session
+ *     cookie alone leaves auth.currentUser === null, which breaks any
+ *     client-side Firestore read whose rules check request.auth.uid).
  *
  * Hard constraints (ALL must hold, or the route 404s):
  *   1. process.env.NODE_ENV !== 'production'
@@ -19,6 +22,8 @@
  *   2. Admin SDK: createCustomToken(uid).
  *   3. Exchange the custom token for an ID token via Identity Toolkit REST.
  *   4. createSessionCookie(idToken) → set as __session cookie.
+ *   5. Return { ok, impersonating, name, customToken } so the caller can
+ *      also sign the client SDK in.
  */
 
 import { NextResponse } from 'next/server';
@@ -95,7 +100,17 @@ export async function POST(req: Request) {
     const expiresIn = 5 * 24 * 60 * 60 * 1000;
     const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
-    const res = NextResponse.json({ ok: true, impersonating: uid, name: data.name ?? null });
+    // Return customToken too so the /dev/test page can sign the *client* SDK
+    // in via signInWithCustomToken. Without it only the server __session
+    // cookie is set, and client-side Firestore queries (e.g. the dashboard's
+    // getActiveTripForUser) get rejected by rules because auth.currentUser
+    // is still null.
+    const res = NextResponse.json({
+      ok: true,
+      impersonating: uid,
+      name: data.name ?? null,
+      customToken,
+    });
     res.cookies.set({
       name: COOKIE_NAME,
       value: sessionCookie,
