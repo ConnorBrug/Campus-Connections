@@ -92,9 +92,6 @@ git push
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | paste the whole service-account JSON on one line |
    | `RESEND_API_KEY` | from https://resend.com/api-keys (needed for transactional emails) |
    | `EMAIL_FROM` | e.g. `Campus Connections <noreply@campus-connections.com>` — domain must be verified in Resend |
-   | `TWILIO_ACCOUNT_SID` | from Twilio Console (for match SMS) |
-   | `TWILIO_AUTH_TOKEN` | from Twilio Console |
-   | `TWILIO_FROM_NUMBER` | E.164 Twilio number, e.g. `+15551234567` |
    | `NEXT_PUBLIC_EMAIL_WHITELIST` | optional — comma-separated test emails |
 
    Apply each to **Production, Preview, and Development**.
@@ -104,20 +101,63 @@ git push
 
 ---
 
-## 4. Point campus-connections.com at Vercel
+## 4. Point campus-connections.com at Vercel (Namecheap DNS)
 
-1. In Vercel → Project → **Settings → Domains** → add `campus-connections.com`
-   and `www.campus-connections.com`.
-2. Vercel will show you the DNS records to add at your registrar:
-   - `A` record `@` → `76.76.21.21`
-   - `CNAME` `www` → `cname.vercel-dns.com`
-   (or the exact values Vercel shows you — follow Vercel's UI.)
-3. **Before** propagation is complete, remove the old DNS records that point
-   at Firebase App Hosting (also at your registrar).
-4. Wait 5-60 min for DNS. Vercel will auto-issue a TLS cert.
+1. In Vercel → Project → **Settings → Domains** → add both
+   `campus-connections.com` and `www.campus-connections.com`.
 
-Once `campus-connections.com` resolves to Vercel, **redeploy** in Vercel so
-the new domain is picked up for edge caching.
+2. In a separate tab, sign in to Namecheap → **Domain List** →
+   **Manage** on `campus-connections.com` → **Advanced DNS**.
+
+3. **Delete Namecheap's default records first.** Namecheap usually ships a
+   free domain with:
+   - A `URL Redirect Record` on Host `@` forwarding to `www.`
+   - A `CNAME Record` on Host `www` pointing to `parkingpage.namecheap.com.`
+   - Possibly placeholder `A Record` entries pointing at parking IPs.
+
+   **Remove these before adding the Vercel records** — Namecheap's UI will
+   silently keep the URL Redirect Record active alongside an A record, which
+   causes propagation to flap between Vercel and the parking page.
+
+4. Add the exact two records Vercel currently requires for apex + www:
+
+   | Type            | Host | Value                    | TTL       |
+   |-----------------|------|--------------------------|-----------|
+   | `A Record`      | `@`  | `76.76.21.21`            | Automatic |
+   | `CNAME Record`  | `www`| `cname.vercel-dns.com.`  | Automatic |
+
+   - Keep the trailing dot on `cname.vercel-dns.com.` — Namecheap's UI
+     accepts it with or without, but the dotted form matches Vercel's docs
+     and is unambiguous.
+   - Do **not** create an `ALIAS` or `ANAME` record on `@`. Vercel's apex
+     path is the plain A record above.
+
+5. Save. Namecheap propagation is usually 1–30 minutes (occasionally longer
+   for new domains on first publish). You can check with
+   `dig campus-connections.com +short` — expect `76.76.21.21`.
+
+6. **TLS / SSL is automatic.** Once DNS resolves, Vercel auto-issues a
+   Let's Encrypt cert for both `campus-connections.com` and
+   `www.campus-connections.com`. You should see both flip to **Valid
+   Configuration** in Vercel → Settings → Domains within a few minutes of
+   propagation. You do not need to purchase Namecheap's "PositiveSSL" add-on.
+
+7. Once both domains show Valid Configuration in Vercel, **redeploy** in
+   Vercel (Deployments → latest → ⋯ → Redeploy) so the new apex is picked
+   up for edge caching and the primary domain is canonical.
+
+### Troubleshooting
+
+- **Cert stuck on "Pending Verification"**: almost always an
+  un-deleted URL Redirect Record or a stale A record from Namecheap's
+  defaults. Re-check Advanced DNS and remove anything on Host `@` other
+  than the single A record above.
+- **www works but apex doesn't (or vice versa)**: wait 10 more minutes,
+  then re-query `dig +trace`. Namecheap sometimes serves apex and www from
+  different edges during propagation.
+- **Firebase auth emails still say `connections-hw9ha.firebaseapp.com`**:
+  that's expected until you do §6b (custom auth domain). The app itself
+  will already be on `campus-connections.com`.
 
 ---
 
@@ -211,24 +251,13 @@ you-go)** plan.
    firebase functions:secrets:set RESEND_API_KEY
    firebase functions:secrets:set EMAIL_FROM   # optional, defaults to noreply@campus-connections.com
    firebase functions:secrets:set APP_URL      # optional, defaults to https://campus-connections.com
-
-   # SMS (Twilio) — required if you want match text messages to send.
-   # If you skip these, SMS calls become silent no-ops.
-   firebase functions:secrets:set TWILIO_ACCOUNT_SID
-   firebase functions:secrets:set TWILIO_AUTH_TOKEN
-   firebase functions:secrets:set TWILIO_FROM_NUMBER   # E.164, e.g. +15551234567
    ```
 
    Notes:
    - Email: the `EMAIL_FROM` domain must be verified in Resend. During early
      testing you can also use Resend's built-in `onboarding@resend.dev` sender.
-   - SMS: Twilio requires you to purchase a phone number ($1/mo) and, for
-     US traffic, register a low-volume A2P 10DLC campaign. Until that's
-     approved you'll see delivery errors in the Twilio logs even though the
-     code path is correct.
-   - Both providers are opt-in at the user level: SMS only sends when the
-     user has both `phoneNumber` set AND `smsNotificationsEnabled === true`
-     on their profile doc (see onboarding form / profile settings).
+   - Email is the only notification channel — SMS was removed from the
+     project on 2026-04-23. No Twilio secrets, no phone collection in the UI.
 
 3. Build & deploy:
 
@@ -401,58 +430,39 @@ needing a school account on hand. It is dead code in production builds.
 
 ---
 
-## 14. Phone numbers + SMS notifications (wired up)
+## 14. Notifications — email only (no SMS)
 
-Onboarding (`/onboarding`) has an **optional** phone number field plus an
-SMS opt-in checkbox. Phone input is US-only and uses a masked input
-(`(555) 555-5555` on screen; stored in E.164 as `+15555555555`). The opt-in
-checkbox is disabled until a valid phone is entered. At save time the
-value is written to `users/<uid>.phoneNumber` and
-`users/<uid>.smsNotificationsEnabled`.
+As of 2026-04-23 the project sends notifications exclusively via Resend
+email. SMS / Twilio / phone-number collection was fully removed:
 
-The backend **does** send SMS now — `functions/src/sms.ts` wraps Twilio
-and is invoked alongside email in three places:
+- `functions/src/sms.ts` is a no-op stub (safe to delete).
+- `functions/src/matching.ts` and `functions/src/index.ts` no longer import
+  or call SMS helpers.
+- `UserProfile` no longer has `phoneNumber` / `smsNotificationsEnabled`.
+- `/onboarding` and `/profile` no longer render a phone input or SMS
+  checkbox.
+- `twilio` has been removed from `functions/package.json`.
+
+Email is invoked in the same places the old SMS calls lived:
 
 - `onTripCreated` → match notifications to both riders.
 - `pairMatchNoon` / `pairMatchHourly` → match, no-match, and XL-suggestion
   notifications.
 
-Opt-in is enforced inside `functions/src/sms.ts`. Every send call:
-1. Loads the recipient's `/users/{uid}` doc.
-2. Aborts silently if `smsNotificationsEnabled !== true`.
-3. Aborts silently if `phoneNumber` fails E.164 validation.
-4. Aborts silently if `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` /
-   `TWILIO_FROM_NUMBER` are unset.
-
-So the feature is safe to deploy before you've purchased a Twilio number —
-it just becomes a no-op until you set the three secrets above.
+Email sends become silent no-ops if `RESEND_API_KEY` is unset, so functions
+still deploy cleanly before you wire up Resend.
 
 ### Setup
 
-1. Create a Twilio account, buy a US long-code number ($1/mo), and submit
-   an A2P 10DLC campaign registration (required for US carrier delivery).
-2. Set the three secrets (see section 7):
+1. Sign up at https://resend.com and create an API key.
+2. Verify your sending domain in Resend (add the MX + TXT records it hands
+   you to your Namecheap Advanced DNS).
+3. Set the secret for functions:
    ```
-   firebase functions:secrets:set TWILIO_ACCOUNT_SID
-   firebase functions:secrets:set TWILIO_AUTH_TOKEN
-   firebase functions:secrets:set TWILIO_FROM_NUMBER
+   firebase functions:secrets:set RESEND_API_KEY
+   firebase functions:secrets:set EMAIL_FROM   # optional, e.g. "Campus Connections <noreply@campus-connections.com>"
    ```
-3. Redeploy functions: `cd functions && npm install && npm run deploy`.
-
-### Compliance notes
-
-- Every outbound SMS body ends with `Reply STOP to opt out.` (Twilio
-  automatically enforces STOP/HELP keywords on registered numbers).
-- No marketing content is sent — transactional match / no-match /
-  luggage-warning messages only. This matters for 10DLC campaign approval.
-- Recipients are always verified opt-in: the database flag
-  `smsNotificationsEnabled` only becomes `true` after the user checks the
-  opt-in box at onboarding (and provides a phone number).
-
-### Cost expectations
-
-Twilio at this volume is essentially free: ~$0.0079 per SMS in the US, so
-1,000 match SMSes/month ≈ $8 plus the ~$1/mo number rental.
+4. Redeploy functions: `cd functions && npm install && npm run deploy`.
 
 ---
 

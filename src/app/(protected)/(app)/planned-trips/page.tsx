@@ -204,19 +204,20 @@ export default function PlannedTripsPage() {
   }
 
   const renderNoTrip = () => (
-    <>
-      <div className="text-center">
-        <CardTitle className="text-2xl font-headline">No Trips Planned</CardTitle>
-        <CardDescription className="text-lg mt-2">
-          You don&apos;t have any trips planned yet. Let&apos;s find your next match!
-        </CardDescription>
-        <Button asChild size="lg" className="mt-6">
-          <Link href="/dashboard">
-            <Plane className="mr-2 h-5 w-5" /> Plan a New Trip
-          </Link>
-        </Button>
+    <div className="flex flex-col items-center text-center py-8 px-4">
+      <div className="bg-primary/10 p-4 rounded-full mb-4" aria-hidden="true">
+        <Plane className="h-10 w-10 text-primary" />
       </div>
-    </>
+      <CardTitle className="text-2xl font-headline">No trips planned</CardTitle>
+      <CardDescription className="text-base mt-2 max-w-md">
+        Post your next airport trip and we&apos;ll match you with a verified student headed the same way.
+      </CardDescription>
+      <Button asChild size="lg" className="mt-6">
+        <Link href="/dashboard">
+          <Plane className="mr-2 h-5 w-5" aria-hidden="true" /> Plan a New Trip
+        </Link>
+      </Button>
+    </div>
   );
 
   const renderPendingTrip = (trip: TripRequest) => (

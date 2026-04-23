@@ -145,15 +145,18 @@ export default function MainPage() {
                   </>
                 )
               ) : (
-                <>
-                  <p className="text-muted-foreground">
-                    You do not have any trips planned. We look forward to connecting you with someone
-                    for your next destination!
+                <div className="flex flex-col items-center text-center py-8 px-4 rounded-lg border border-dashed bg-muted/20">
+                  <div className="bg-primary/10 p-4 rounded-full mb-4" aria-hidden="true">
+                    <Plane className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-1">No trips planned yet</h3>
+                  <p className="text-muted-foreground max-w-sm mb-4">
+                    Post your next airport trip and we&apos;ll connect you with a verified student headed the same way.
                   </p>
-                  <Button asChild className="mt-4">
-                    <Link href="/dashboard">Plan a Trip</Link>
+                  <Button asChild size="lg">
+                    <Link href="/dashboard">Post a Trip</Link>
                   </Button>
-                </>
+                </div>
               )}
             </CardContent>
           </Card>

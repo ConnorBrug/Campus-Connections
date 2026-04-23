@@ -4,15 +4,12 @@
  * Goal: stop an attacker (or an innocent paste) from injecting control
  * characters, direction-override / zero-width characters, or JS/HTML that
  * would render as active content somewhere downstream (email templates,
- * SMS bodies, push notifications, Firestore-indexed display strings).
+ * push notifications, Firestore-indexed display strings).
  *
- * This is NOT a replacement for per-surface encoding. We still:
- *   - HTML-escape anywhere we interpolate into an HTML email template
- *     (see functions/src/email.ts `esc`).
- *   - Strip more aggressively before a Twilio body (see functions/src/sms.ts
- *     `sanitizeForSms`).
- * This module is the *input-side* gate so bad data never lands in Firestore
- * in the first place.
+ * This is NOT a replacement for per-surface encoding. We still HTML-escape
+ * anywhere we interpolate into an HTML email template (see
+ * functions/src/email.ts `esc`). This module is the *input-side* gate so bad
+ * data never lands in Firestore in the first place.
  */
 
 // U+0000..U+001F / U+007F..U+009F: ASCII + C1 controls

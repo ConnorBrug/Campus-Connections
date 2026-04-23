@@ -41,7 +41,6 @@ exports.runPairingForWindow = runPairingForWindow;
 const admin = __importStar(require("firebase-admin"));
 const utils_1 = require("./utils");
 const email_1 = require("./email");
-const sms_1 = require("./sms");
 if (!admin.apps.length)
     admin.initializeApp();
 const db = admin.firestore();
@@ -386,11 +385,9 @@ async function runPairingForWindow(hoursFrom, hoursTo) {
         }
         for (const t of fb.xlSuggested) {
             (0, email_1.sendXlRideSuggestion)(t).catch(() => { });
-            (0, sms_1.sendXlRideSuggestionSms)(t).catch(() => { });
         }
         for (const t of fb.noMatchWarnings) {
             (0, email_1.sendNoMatchNotification)(t).catch(() => { });
-            (0, sms_1.sendNoMatchSms)(t).catch(() => { });
         }
     }
     if (created > 0 || unmatched.length > 0) {
@@ -400,7 +397,6 @@ async function runPairingForWindow(hoursFrom, hoursTo) {
                 const partners = group.filter(x => x.userId !== rider.userId);
                 if (partners.length > 0) {
                     (0, email_1.sendMatchNotification)(rider, partners[0]).catch(() => { });
-                    (0, sms_1.sendMatchSms)(rider, partners[0]).catch(() => { });
                 }
             }
         }

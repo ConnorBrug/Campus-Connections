@@ -20,10 +20,6 @@ export interface UserProfile {
   gender?: UserGender | null;
   graduationYear?: number | null;
   emailVerified?: boolean;
-  /** E.164 phone number for optional SMS notifications (e.g. +15555550123). */
-  phoneNumber?: string | null;
-  /** If true, send SMS match notifications to `phoneNumber`. */
-  smsNotificationsEnabled?: boolean;
   /** Auth provider used at sign-up: 'google', 'microsoft', or 'password'. */
   authProvider?: 'google' | 'microsoft' | 'password';
   flaggedUserIds?: string[];   // <-- used in auth.ts

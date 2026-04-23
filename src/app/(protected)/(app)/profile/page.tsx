@@ -457,8 +457,16 @@ export default function ProfilePage() {
                       <Label htmlFor="currentPassword">Current Password</Label>
                       <div className="relative">
                         <Input id="currentPassword" type={showCurrentPassword ? 'text' : 'password'} {...passwordForm.register('currentPassword')} />
-                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowCurrentPassword(v => !v)}>
-                          {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute inset-y-0 right-0 h-full px-3"
+                          onClick={() => setShowCurrentPassword(v => !v)}
+                          aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
+                          aria-pressed={showCurrentPassword}
+                        >
+                          {showCurrentPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                         </Button>
                       </div>
                       {passwordForm.formState.errors.currentPassword && (
@@ -470,8 +478,16 @@ export default function ProfilePage() {
                       <Label htmlFor="newPassword">New Password</Label>
                       <div className="relative">
                         <Input id="newPassword" type={showNewPassword ? 'text' : 'password'} {...passwordForm.register('newPassword')} />
-                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowNewPassword(v => !v)}>
-                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute inset-y-0 right-0 h-full px-3"
+                          onClick={() => setShowNewPassword(v => !v)}
+                          aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                          aria-pressed={showNewPassword}
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                         </Button>
                       </div>
                       {passwordForm.formState.errors.newPassword && (
@@ -483,8 +499,16 @@ export default function ProfilePage() {
                       <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
                       <div className="relative">
                         <Input id="confirmNewPassword" type={showConfirmNewPassword ? 'text' : 'password'} {...passwordForm.register('confirmNewPassword')} />
-                        <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-0 h-full px-3" onClick={() => setShowConfirmNewPassword(v => !v)}>
-                          {showConfirmNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute inset-y-0 right-0 h-full px-3"
+                          onClick={() => setShowConfirmNewPassword(v => !v)}
+                          aria-label={showConfirmNewPassword ? 'Hide password confirmation' : 'Show password confirmation'}
+                          aria-pressed={showConfirmNewPassword}
+                        >
+                          {showConfirmNewPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                         </Button>
                       </div>
                       {passwordForm.formState.errors.confirmNewPassword && (

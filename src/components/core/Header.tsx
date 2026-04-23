@@ -24,8 +24,9 @@ export function Header() {
     <Link
       href="/main"
       className="flex items-center gap-2 text-2xl font-bold text-primary-foreground"
+      aria-label="Campus Connections home"
     >
-      <CarFront className="h-8 w-8 text-primary-foreground" />
+      <CarFront className="h-8 w-8 text-primary-foreground" aria-hidden="true" />
       <span className="font-headline">Connections</span>
     </Link>
   );
@@ -35,7 +36,7 @@ export function Header() {
       {/* Full-width row, no centered container */}
       <div className="flex h-16 w-full items-center justify-between px-4 md:px-6">
         <Logo />
-        <nav className="flex items-center gap-1 sm:gap-2">
+        <nav aria-label="Primary" className="flex items-center gap-1 sm:gap-2">
           <Button
             variant="ghost"
             size="sm"
@@ -43,7 +44,7 @@ export function Header() {
             className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
           >
             <Link href="/main">
-              <Home className="mr-1 h-4 w-4 sm:mr-2" />
+              <Home className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
               <span className="hidden sm:inline">Home</span>
               <span className="sm:hidden">Home</span>
             </Link>
@@ -55,7 +56,7 @@ export function Header() {
             className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
           >
             <Link href="/profile">
-              <User className="mr-1 h-4 w-4 sm:mr-2" />
+              <User className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
               <span className="hidden sm:inline">Profile</span>
               <span className="sm:hidden">Profile</span>
             </Link>
@@ -67,7 +68,7 @@ export function Header() {
             className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
           >
             <Link href="/planned-trips">
-              <ClipboardList className="mr-1 h-4 w-4 sm:mr-2" />
+              <ClipboardList className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
               <span className="hidden sm:inline">Planned Trips</span>
               <span className="sm:hidden">Trips</span>
             </Link>
@@ -79,7 +80,7 @@ export function Header() {
             disabled={loggingOut}
             className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
           >
-            <LogOut className="mr-1 h-4 w-4 sm:mr-2" />
+            <LogOut className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
             <span className="hidden sm:inline">Logout</span>
             <span className="sm:hidden">Exit</span>
           </Button>

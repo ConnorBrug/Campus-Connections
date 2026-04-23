@@ -3,7 +3,6 @@ import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import { runPairingForWindow, findBestMatchForTrip } from './matching';
 import { sendMatchNotification, sendTripRequestConfirmation } from './email';
-import { sendMatchSms } from './sms';
 import type { TripRequest, Match } from './types';
 
 if (!admin.apps.length) {
@@ -201,13 +200,11 @@ export const onTripCreated = functions.firestore
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Send email + SMS notifications (best-effort, outside transaction).
-    // All four are fire-and-forget; a failure in any one must not break the
+    // Send email notifications (best-effort, outside transaction).
+    // Both are fire-and-forget; a failure in either must not break the
     // match write or cause the trigger to retry.
     sendMatchNotification(trip, bestMatch).catch(() => {});
     sendMatchNotification(bestMatch, trip).catch(() => {});
-    sendMatchSms(trip, bestMatch).catch(() => {});
-    sendMatchSms(bestMatch, trip).catch(() => {});
 
     functions.logger.info('[onTripCreated] Instant match created', {
       tripId: trip.id,

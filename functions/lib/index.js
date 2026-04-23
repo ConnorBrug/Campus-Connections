@@ -39,7 +39,6 @@ const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const matching_1 = require("./matching");
 const email_1 = require("./email");
-const sms_1 = require("./sms");
 if (!admin.apps.length) {
     admin.initializeApp();
 }
@@ -216,13 +215,11 @@ exports.onTripCreated = functions.firestore
         senderId: 'system',
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
-    // Send email + SMS notifications (best-effort, outside transaction).
-    // All four are fire-and-forget; a failure in any one must not break the
+    // Send email notifications (best-effort, outside transaction).
+    // Both are fire-and-forget; a failure in either must not break the
     // match write or cause the trigger to retry.
     (0, email_1.sendMatchNotification)(trip, bestMatch).catch(() => { });
     (0, email_1.sendMatchNotification)(bestMatch, trip).catch(() => { });
-    (0, sms_1.sendMatchSms)(trip, bestMatch).catch(() => { });
-    (0, sms_1.sendMatchSms)(bestMatch, trip).catch(() => { });
     functions.logger.info('[onTripCreated] Instant match created', {
         tripId: trip.id,
         partnerId: bestMatch.id,

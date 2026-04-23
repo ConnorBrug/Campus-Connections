@@ -17,40 +17,35 @@ Paste this whole file into a fresh Claude Cowork chat so the new assistant can p
 1. **OAuth-only signup.** `signup` page shows only Google + Microsoft buttons. No password form on signup. Login page still has password form for legacy accounts.
 2. **Microsoft OAuth** uses `OAuthProvider('microsoft.com')` with `setCustomParameters({ prompt: 'select_account', tenant: 'organizations' })`.
 3. **Email-domain gate:** Both providers validate the email maps to a known university (via `src/lib/universities.ts`) or a whitelist — otherwise sign out.
-4. **Phone number is fully optional.** No cross-field Zod refine requiring phone. SMS checkbox is disabled-until-valid-phone (UX hint only). At save time: `phoneToSave = rawPhone ? (rawPhone.startsWith('+') ? rawPhone : '+' + rawPhone) : null`, and `smsNotificationsEnabled: !!values.smsNotificationsEnabled && !!phoneToSave`.
-5. **Ignore all SMS sending issues.** Phone/SMS data is collected but not sent. Do not wire Twilio.
-6. **Dev-only tooling already built:** `scripts/seed-test-trips.mjs`, `src/app/(protected)/dev/matching/page.tsx`, `src/app/api/dev/matching/clean/route.ts`. All NODE_ENV-gated.
+4. **SMS / phone collection fully removed.** 2026-04-23: all phone / SMS / Twilio code deleted from the project. No `phoneNumber` or `smsNotificationsEnabled` on `UserProfile`, no `PhoneInput` component, no `NEXT_PUBLIC_SMS_ENABLED` flag, no `functions/src/sms.ts` imports. Notifications ship exclusively through Resend email.
+5. **Dev-only tooling already built:** `scripts/seed-test-trips.mjs`, `src/app/(protected)/dev/matching/page.tsx`, `src/app/api/dev/matching/clean/route.ts`. All NODE_ENV-gated.
 
 ## 3. Known issues still to fix (priority order)
 
 ### BLOCKERS (do first)
 
-- [ ] **Fix `firestore.indexes.json` field paths.** File currently references `flight.boardingTime`, `universityId`, `flight.flightCode`, but `functions/src/matching.ts` queries `flightDateTime` and `university`. The matching cron will fail with "missing index" errors in production. Align the indexes to the fields actually queried. After editing, run `firebase deploy --only firestore:indexes`.
-- [ ] **Tighten `firestore.rules`.** `match /settings/{doc}` currently has `allow read: if true;` — change to `allow read: if isSignedIn();` (or tighter if there's no reason for clients to read settings at all).
+- [x] **Fix `firestore.indexes.json` field paths.** ✅ Done 2026-04-22. Indexes aligned with all `.where()` patterns across `functions/src/matching.ts` and `src/lib/auth.ts` (`status + flightDateTime`, `status + university + flightDateTime`, `status + departingAirport + flightDateTime`, `userId + flightDateTime`). **Still need to `firebase deploy --only firestore:indexes` before prod.**
+- [x] **Tighten `firestore.rules`.** ✅ Done 2026-04-22. `/settings/{doc}` now `allow read: if isSignedIn();`.
 
 ### HIGH (ship-blockers for the Vercel launch)
 
-- [ ] **Update `MIGRATION.md` §4 DNS section for Namecheap.** Include the exact Namecheap Advanced DNS entries Vercel currently requires:
-  - A Record, Host `@`, Value `76.76.21.21`
-  - CNAME, Host `www`, Value `cname.vercel-dns.com.`
-  - Note that Namecheap's default "URL Redirect Record" for `@` must be removed first.
-  - Mention SSL is automatic once DNS propagates.
-- [ ] **SEO / metadata.** `src/app/layout.tsx` only sets `title`/`description`/`favicon`. Add: `metadataBase: new URL('https://campus-connections.com')`, `openGraph` (title, description, url, siteName, images, locale, type), `twitter` (card: 'summary_large_image'), `robots`, `alternates.canonical`, `manifest`, `appleWebApp`. Create `public/robots.txt`, `public/og-image.png` (1200×630), `public/apple-touch-icon.png` (180×180), `public/site.webmanifest`, and either `public/sitemap.xml` or `src/app/sitemap.ts` that emits `/`, `/login`, `/signup`, and any marketing pages.
+- [x] **Update `MIGRATION.md` §4 DNS section for Namecheap.** ✅ Done 2026-04-22. Rewrote §4 with the exact Namecheap Advanced DNS entries Vercel requires (A `@ → 76.76.21.21`, CNAME `www → cname.vercel-dns.com.`), the "remove the default URL Redirect Record for `@` first" note, and the automatic SSL callout. Added a troubleshooting subsection for the most common Namecheap ↔ Vercel failure modes.
+- [x] **SEO / metadata.** ✅ Done 2026-04-22. `src/app/layout.tsx` now emits `metadataBase`, `openGraph` (title/description/url/siteName/images/locale/type + 1200×630 alt text), `twitter.summary_large_image`, `robots`, `alternates.canonical`, `manifest: '/manifest.webmanifest'`, `appleWebApp`, and an expanded `icons` array (SVG + 16×16/32×32/180×180 PNGs). `src/app/manifest.ts` produces the programmatic web-app manifest; `src/app/sitemap.ts` emits `/`, `/login`, `/signup`, `/privacy-policy`, `/terms-of-service`. Added static mirrors `public/robots.txt` and `public/site.webmanifest` (neither the programmatic nor the static file can be deleted on the Windows mount, so both are kept in lockstep).
 
 ### MEDIUM (polish the user experience)
 
-- [ ] **Landing page (`src/app/page.tsx`) visual polish.** Audit hero, value prop, CTAs, feature sections, testimonial/trust, footer. Make sure CTAs route correctly to `/signup`.
-- [ ] **Empty states.** `/main` (dashboard) and other list views need friendly empty states when there are no trips/matches/chats.
-- [ ] **Error pages.** Improve `src/app/error.tsx` and `src/app/not-found.tsx` — branded, helpful, with a "back home" CTA.
-- [ ] **Profile page phone field.** Add an editable phone number field to `/profile` so users who skipped phone at onboarding can add it later (and vice versa). Same PHONE_RE validation; same phone-gated SMS checkbox pattern.
-- [ ] **Login page `?deleted=true` banner.** When redirected after account deletion, show a neutral acknowledgment ("Your account has been deleted.").
-- [ ] **Chat page resilience.** Verify `src/app/(protected)/chat/[matchId]/...` handles a missing match doc, a cancelled match, and an expired chat (`expiresAt` in the past) without crashing. Show a friendly message instead.
+- [x] **Landing page (`src/app/page.tsx`) visual polish.** ✅ Done 2026-04-22. Full rewrite: hero + "Verified students only" trust badge, 3-step "How it works" grid, 6-card value-prop section (PiggyBank / ShieldCheck / Handshake / Clock / CheckCircle2 / GraduationCap), closing CTA band on primary bg, footer with Privacy/Terms/Login/Signup links. Every CTA routes to `/signup`.
+- [x] **Empty states.** ✅ Done 2026-04-22. `/main` dashboard "no active trip", `/planned-trips` `renderNoTrip`, and `/manual-rides` "not available yet" + "no posts available" all now use a Card + lucide-icon + friendly copy + primary CTA pattern. `chat/[matchId]` missing-match state also covered by the ChatUnavailable component.
+- [x] **Error pages.** ✅ Done 2026-04-22. `src/app/error.tsx` (AlertTriangle badge, RotateCcw / Home actions, gradient bg) and `src/app/not-found.tsx` (primary "Back home" + Compass "Get started" secondary) are branded and accessible.
+- [x] **Profile page phone field.** ✅ Superseded 2026-04-23. The `/profile` phone + SMS opt-in block was removed as part of the full SMS deletion. `/profile` now edits only name, gender, graduation year, BC campus area, and profile photo.
+- [x] **Login page `?deleted=true` banner.** ✅ Done 2026-04-22. `LoginClient` reads `useSearchParams().get('deleted')`, shows a dismissible Alert ("Your account has been deleted."), and strips the query param once acknowledged.
+- [x] **Chat page resilience.** ✅ Done 2026-04-22. `src/app/(protected)/(app)/chat/[matchId]/page.tsx` uses a discriminated-union `LoadState` (`loading | missing | error | ready`) and a `ChatUnavailable` fallback component. Missing match docs render a friendly page (SearchX icon, "Back to dashboard" + "See my trips" CTAs) instead of a silent `router.replace`. Cancelled / completed / expired match states still render read-only banners.
 
 ### LOW (nice to have)
 
 - [x] **CSRF / origin checks** on POST endpoints in `src/app/api/*`. ✅ Done 2026-04-22. See `src/lib/csrf.ts` (`assertSameOrigin`) — wired into every state-changing route (trips, profile, account/delete, session, manual-rides/match, cancel, delay).
-- [ ] **Favicons/PWA.** Generate a full favicon set (16, 32, 180, 192, 512) from the existing SVG.
-- [ ] **Accessibility audit.** Ensure all form inputs have labels, buttons have accessible names, color contrast passes WCAG AA on the brand palette.
+- [x] **Favicons/PWA.** ✅ Done 2026-04-22. Generated `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png` (180×180), `icon-192.png`, `icon-512.png` (maskable), and a 1200×630 `og-image.png` from `favicon.svg` via ImageMagick. All referenced in `layout.tsx` + `manifest.ts`.
+- [x] **Accessibility audit.** ✅ Done 2026-04-22. Password visibility toggles in `/profile` now have `aria-label` + `aria-pressed`; landing page, error, not-found, empty states, and Header decorative icons all have `aria-hidden="true"`; Header nav has `aria-label="Primary"` and the logo Link has `aria-label="Campus Connections home"`.
 
 ## 3.5 Completed security + dependency work (2026-04-22)
 
@@ -84,10 +79,8 @@ Full security audit across 12 scope areas (auth/session, Firestore rules, API au
 - `C:\Users\gunne\Campus-Connections\public\` — only contains `favicon.svg`; needs robots, sitemap, og-image, manifest, apple-touch-icon.
 - `C:\Users\gunne\Campus-Connections\src\app\page.tsx` — landing page polish.
 - `C:\Users\gunne\Campus-Connections\src\app\error.tsx`, `src\app\not-found.tsx` — improve.
-- `C:\Users\gunne\Campus-Connections\src\app\(protected)\profile\...` — add editable phone field.
 - `C:\Users\gunne\Campus-Connections\src\app\(auth)\login\LoginClient.tsx` — add `?deleted=true` banner.
 - `C:\Users\gunne\Campus-Connections\src\app\(protected)\chat\...` — harden against missing/expired match.
-- `C:\Users\gunne\Campus-Connections\src\app\(auth)\onboarding\page.tsx` — **already correct, phone is optional. Do not re-add cross-field refine.**
 
 ## 5. Gotchas you'll hit
 
@@ -98,10 +91,25 @@ Full security audit across 12 scope areas (auth/session, Firestore rules, API au
 - **Firestore composite indexes** must be deployed (`firebase deploy --only firestore:indexes`) before the matching cron will work in prod. Emulator ignores them.
 - **Env vars on Vercel.** Firebase Admin creds go in Vercel → Project → Settings → Environment Variables: `FIREBASE_SERVICE_ACCOUNT_JSON` (or split triple). Don't commit them. `.env.local` stays gitignored.
 
-## 6. First-message script for the new chat
+## 6. Pre-launch checklist (before pushing to Vercel)
 
-> I'm continuing work on Campus-Connections (see `HANDOFF.md` in the repo). Read `HANDOFF.md` first, then start with the blockers: fix `firestore.indexes.json` to match the fields actually queried in `functions/src/matching.ts`, and tighten the `/settings/{doc}` read rule in `firestore.rules`. After that, work the high-priority list in order. Don't overwrite the locked-in decisions in §2. Ignore SMS.
+The code-side §3 list is fully checked off. What's left is operational — things that cannot be done from a Cowork session because they live in external dashboards:
+
+1. **Deploy Firestore indexes.** `firebase deploy --only firestore:indexes` (must run before the matching cron goes live in prod, or queries will fail with "missing index").
+2. **Deploy Firestore rules.** `firebase deploy --only firestore:rules` (picks up the `/settings/{doc}` read tightening).
+3. **Deploy Cloud Functions.** `firebase deploy --only functions` (picks up the `manualPairing` admin-gate + window clamp).
+4. **Vercel environment variables.** In Vercel → Project → Settings → Environment Variables, add:
+   - `NEXT_PUBLIC_SITE_URL=https://campus-connections.com`
+   - `NEXT_PUBLIC_FIREBASE_*` (the full six-var public Firebase config from `.env.local`)
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` (Admin SDK service account — single minified JSON string, **not** committed)
+5. **DNS (Namecheap).** Follow the rewritten MIGRATION.md §4 — remove the default URL Redirect Record for `@` first, then add the `A @ 76.76.21.21` + `CNAME www cname.vercel-dns.com.` entries.
+6. **Favicon PNGs.** The PNGs in `public/` were rasterised from `favicon.svg` via ImageMagick in this environment. If you want crisper pixel-level hinting for the 16×16 and 32×32 sizes, regenerate them from a dedicated small-size design asset (the SVG rasterises fine at 180+ but is soft at 16×16). Not a blocker.
+7. **Run `npm run build` on Windows once.** The Windows mount inside Cowork truncates file reads, so `tsc --noEmit` inside the session reports phantom JSX errors on files I edited (HANDOFF §5 "Linux-mount can show a stale view"). The user's local `npm run build` reads the true bytes and should succeed. If any real error surfaces, it'll be a non-truncation issue and easy to spot.
+
+## 7. First-message script for the next chat
+
+> I'm continuing work on Campus-Connections (see `HANDOFF.md` in the repo). All items in §3 are checked off and SMS has been fully removed from the codebase. The remaining work is operational — see §6 for the pre-launch checklist (deploy Firestore indexes/rules/functions, set `RESEND_API_KEY` Firebase secret, add Vercel env vars, update Namecheap DNS, run `npm run build` locally on Windows). Don't overwrite the locked-in decisions in §2.
 
 ---
 
-*Generated from prior chat on 2026-04-21. Updated 2026-04-22 with security audit + dep upgrade results.*
+*Generated from prior chat on 2026-04-21. Updated 2026-04-22 with security audit + dep upgrade results. Updated 2026-04-22 again after finishing all §3 polish items. Updated 2026-04-23 to remove all SMS / Twilio / phone-collection code and docs — email via Resend is now the sole notification channel.*

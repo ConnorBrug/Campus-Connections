@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, type SVGProps } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { loginWithGoogle } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CarFront, AlertTriangle, Loader2 } from 'lucide-react';
+import { CarFront, AlertTriangle, Loader2, Info } from 'lucide-react';
 import { profileIsIncomplete } from '@/lib/types';
 
 function GoogleIcon(props: SVGProps<SVGSVGElement>) {
@@ -20,14 +20,25 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
 
 export default function LoginClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   // OAuth spinner is inline (no full-page lock) because the user might close
   // the Google popup mid-flow — Firebase's popup-closed detection can take up
   // to ~60s, and we don't want the page frozen behind a loader during that.
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
+  // Post-deletion acknowledgment: the account-delete API redirects here with
+  // ?deleted=true. Show a neutral banner so the user knows the deletion
+  // actually happened (otherwise it looks like they were just logged out).
+  // Dismiss-on-interaction: any subsequent state change hides it implicitly
+  // because the URL no longer drives rendering after router.replace.
+  const [deletedDismissed, setDeletedDismissed] = useState(false);
+  const showDeletedBanner =
+    !deletedDismissed && searchParams?.get('deleted') === 'true';
+
   const handleGoogle = async () => {
     if (isGoogleSubmitting) return;
+    setDeletedDismissed(true);
     setIsGoogleSubmitting(true);
     setPageError(null);
     try {
@@ -59,6 +70,17 @@ export default function LoginClient() {
         <CardDescription>Log in to find your ride.</CardDescription>
       </CardHeader>
       <CardContent>
+        {showDeletedBanner && (
+          <Alert className="mb-4" role="status">
+            <Info className="h-4 w-4" aria-hidden="true" />
+            <AlertTitle>Your account has been deleted.</AlertTitle>
+            <AlertDescription>
+              Thanks for trying Campus Connections. If you ever want to come back,
+              just sign in again and we&apos;ll set you up fresh.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {pageError && (
           <Alert variant="destructive" className="mb-4">
             <AlertTriangle className="h-4 w-4" />
@@ -77,7 +99,7 @@ export default function LoginClient() {
             aria-busy={isGoogleSubmitting}
           >
             {isGoogleSubmitting ? (
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />
             ) : (
               <GoogleIcon className="mr-2 h-5 w-5" />
             )}

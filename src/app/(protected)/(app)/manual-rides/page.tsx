@@ -4,12 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import { Loader2, UserCheck, ArrowLeft, Plane, Backpack, Luggage } from 'lucide-react';
+import { Loader2, UserCheck, ArrowLeft, Plane, Backpack, Luggage, SearchX, Info } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 
 type ManualCandidate = {
@@ -121,21 +120,40 @@ export default function ManualRidesPage() {
         </div>
 
         {!state?.available && (
-          <Alert>
-            <AlertTitle>Not Available Yet</AlertTitle>
-            <AlertDescription>
-              {state?.reason || 'Manual ride posts are currently unavailable for your trip.'}
-            </AlertDescription>
-          </Alert>
+          <Card>
+            <CardContent className="flex flex-col items-center text-center py-10 px-4">
+              <div className="bg-primary/10 p-4 rounded-full mb-4" aria-hidden="true">
+                <Info className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold mb-1">Not available yet</h3>
+              <p className="text-muted-foreground max-w-md mb-4">
+                {state?.reason || 'Manual ride posts are currently unavailable for your trip.'}
+              </p>
+              <Button asChild variant="outline">
+                <Link href="/dashboard">
+                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Back to Dashboard
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
         {state?.available && state.candidates.length === 0 && (
-          <Alert>
-            <AlertTitle>No Posts Available</AlertTitle>
-            <AlertDescription>
-              No compatible manual posts were found right now. We will keep searching automatically.
-            </AlertDescription>
-          </Alert>
+          <Card>
+            <CardContent className="flex flex-col items-center text-center py-10 px-4">
+              <div className="bg-primary/10 p-4 rounded-full mb-4" aria-hidden="true">
+                <SearchX className="h-8 w-8 text-primary" />
+              </div>
+              <h3 className="text-lg font-semibold mb-1">No posts available</h3>
+              <p className="text-muted-foreground max-w-md mb-4">
+                No compatible manual posts were found right now. We&apos;ll keep searching automatically — check back soon.
+              </p>
+              <Button asChild variant="outline">
+                <Link href="/planned-trips">View my trip</Link>
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
         {state?.available &&
