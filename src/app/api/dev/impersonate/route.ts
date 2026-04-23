@@ -75,9 +75,15 @@ export async function POST(req: Request) {
 
     // 2. Custom token → ID token (via REST) → session cookie.
     const customToken = await adminAuth.createCustomToken(uid);
-    const apiKey =
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
-      'AIzaSyBKUwJiswvgULDhk-jb4kGharvZdl29_EM'; // same fallback as src/lib/firebase.ts
+    const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+    if (!apiKey) {
+      // Should be unreachable once env is required at bundle time, but fail
+      // loud rather than silently downgrading to a hardcoded value.
+      return NextResponse.json(
+        { error: 'Server misconfigured: NEXT_PUBLIC_FIREBASE_API_KEY missing' },
+        { status: 500 },
+      );
+    }
 
     const tokenRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${apiKey}`,
@@ -88,9 +94,13 @@ export async function POST(req: Request) {
       },
     );
     if (!tokenRes.ok) {
-      const errBody = await tokenRes.text();
+      // Don't echo Identity Toolkit's error body back to the caller - it
+      // can contain internal details. Log server-side, return a generic
+      // message.
+      const errBody = await tokenRes.text().catch(() => '');
+      console.error('[impersonate] token exchange failed', { status: tokenRes.status, body: errBody });
       return NextResponse.json(
-        { error: 'Token exchange failed', detail: errBody },
+        { error: 'Token exchange failed' },
         { status: 502 },
       );
     }
@@ -122,9 +132,12 @@ export async function POST(req: Request) {
     });
     return res;
   } catch (err) {
+    // Log server-side, return a generic message to the client. Echoing
+    // err.message can leak stack-trace-ish details (e.g. "No such file
+    // /var/run/secrets/...") from Admin SDK.
     console.error('POST /api/dev/impersonate error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Impersonation failed' },
+      { error: 'Impersonation failed' },
       { status: 500 },
     );
   }

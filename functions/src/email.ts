@@ -1,178 +1,199 @@
 // functions/src/email.ts
-import * as nodemailer from 'nodemailer';
+//
+// Transactional email via Resend (https://resend.com).
+//
+// Configuration (all via environment variables / Firebase secrets):
+//   RESEND_API_KEY  — required. Get one at https://resend.com/api-keys
+//   EMAIL_FROM      — "Name <addr@yourdomain>". Domain must be verified in
+//                     Resend. Defaults to the hard-coded marketing address.
+//   APP_URL         — Absolute origin used in links. Defaults to the prod URL.
+//
+// Local dev:   put the vars in functions/.env (gitignored).
+// Production:  firebase functions:secrets:set RESEND_API_KEY  (etc.)
+//
+// If RESEND_API_KEY is unset every send is a silent no-op. This keeps local
+// matching runs from blowing up when the mail provider isn't configured, and
+// mirrors the old nodemailer behaviour callers already rely on.
+
+import { Resend } from 'resend';
 import { TripRequest } from './types';
 
-// Configure via environment variables (secrets).
-//
-// For production, set these with Firebase secrets:
-//   firebase functions:secrets:set SMTP_HOST
-//   firebase functions:secrets:set SMTP_USER
-//   firebase functions:secrets:set SMTP_PASS
-//   (optional) firebase functions:secrets:set SMTP_PORT
-//   (optional) firebase functions:secrets:set APP_URL
-//
-// For local development, put them in functions/.env (gitignored).
-function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+const APP_URL = process.env.APP_URL || 'https://campus-connections.com';
+const FROM_ADDRESS =
+  process.env.EMAIL_FROM || 'Campus Connections <noreply@campus-connections.com>';
 
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
+let cachedClient: Resend | null = null;
+function getClient(): Resend | null {
+  if (cachedClient) return cachedClient;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  cachedClient = new Resend(key);
+  return cachedClient;
 }
 
-const APP_URL = process.env.APP_URL || 'https://campus-connections.com';
-const FROM_ADDRESS = process.env.EMAIL_FROM || 'Connections <noreply@campus-connections.com>';
-
 /**
- * Send a match notification email to `recipient`, telling them about `partner`.
+ * Escape untrusted strings before interpolating into an HTML template.
+ * User-supplied names / airport codes / flight codes go through this so a
+ * malicious display name like `<script>` can't execute in recipients' inboxes.
  */
+function esc(v: unknown): string {
+  if (v == null) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+interface SendArgs {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}
+
+async function send({ to, subject, html, text }: SendArgs): Promise<void> {
+  const client = getClient();
+  if (!client) return;
+  try {
+    await client.emails.send({
+      from: FROM_ADDRESS,
+      to,
+      subject,
+      html,
+      text,
+    });
+  } catch (e) {
+    // Log but never throw — notification failure shouldn't break matching.
+    console.error('[email] Resend send failed:', e);
+  }
+}
+
+// Reusable pieces so every email looks the same.
+const BRAND_BLOCK = (body: string, ctaHref: string, ctaLabel: string) => `
+  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #111;">
+    ${body}
+    <p style="margin-top: 24px;">
+      <a href="${esc(ctaHref)}"
+         style="background: #2563eb; color: #fff; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+        ${esc(ctaLabel)}
+      </a>
+    </p>
+    <p style="margin-top: 32px; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
+      Campus Connections · Rides for verified university students<br/>
+      You're receiving this because you signed up at campus-connections.com.
+    </p>
+  </div>`;
+
+/** Match-found notification. */
 export async function sendMatchNotification(
   recipient: TripRequest,
-  partner: TripRequest
+  partner: TripRequest,
 ): Promise<void> {
-  const transporter = getTransporter();
-  if (!transporter || !recipient.userEmail) return;
+  if (!recipient.userEmail) return;
 
-  const recipientName = recipient.userName ?? 'Rider';
-  const partnerName = partner.userName ?? 'your match';
-  const flightDate = recipient.flightDate ?? recipient.flightDateTime?.slice(0, 10) ?? 'your flight date';
+  const recipientName = recipient.userName || 'Rider';
+  const partnerName = partner.userName || 'your match';
+  const flightDate =
+    recipient.flightDate || recipient.flightDateTime?.slice(0, 10) || 'your flight date';
 
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
-    to: recipient.userEmail,
-    subject: `You've been matched for your ${recipient.departingAirport} trip!`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Hey ${recipientName}!</h2>
-        <p>Great news - you've been matched with <strong>${partnerName}</strong> for your upcoming trip on <strong>${flightDate}</strong>.</p>
-        <p>Here are the details:</p>
-        <ul>
-          <li><strong>Your flight:</strong> ${recipient.flightCode} from ${recipient.departingAirport}</li>
-          <li><strong>Partner's flight:</strong> ${partner.flightCode} from ${partner.departingAirport}</li>
-        </ul>
-        <p>Log in to Connections to chat with your match and coordinate your ride.</p>
-        <p style="margin-top: 24px;">
-          <a href="${APP_URL}/main"
-             style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-            Open Connections
-          </a>
-        </p>
-        <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          - The Connections Team
-        </p>
-      </div>
-    `,
-  });
+  const subject = `You've been matched for your ${recipient.departingAirport} trip!`;
+  const html = BRAND_BLOCK(
+    `
+    <h2 style="margin-top:0;">Hey ${esc(recipientName)}!</h2>
+    <p>Great news — you've been matched with <strong>${esc(partnerName)}</strong> for your trip on <strong>${esc(flightDate)}</strong>.</p>
+    <ul>
+      <li><strong>Your flight:</strong> ${esc(recipient.flightCode)} from ${esc(recipient.departingAirport)}</li>
+      <li><strong>Partner's flight:</strong> ${esc(partner.flightCode)} from ${esc(partner.departingAirport)}</li>
+    </ul>
+    <p>Log in to chat with your match and coordinate your ride.</p>`,
+    `${APP_URL}/main`,
+    'Open Campus Connections',
+  );
+  const text =
+    `Hey ${recipientName}!\n\n` +
+    `You've been matched with ${partnerName} for your ${flightDate} trip from ${recipient.departingAirport}.\n\n` +
+    `Your flight: ${recipient.flightCode}\n` +
+    `Partner's flight: ${partner.flightCode}\n\n` +
+    `Open Campus Connections: ${APP_URL}/main`;
+
+  await send({ to: recipient.userEmail, subject, html, text });
 }
 
-/**
- * Send a "trip request received" confirmation.
- */
+/** Trip-request received confirmation. */
 export async function sendTripRequestConfirmation(recipient: TripRequest): Promise<void> {
-  const transporter = getTransporter();
-  if (!transporter || !recipient.userEmail) return;
+  if (!recipient.userEmail) return;
 
-  const recipientName = recipient.userName ?? 'Rider';
-  const flightDate = recipient.flightDate ?? recipient.flightDateTime?.slice(0, 10) ?? 'your flight date';
+  const recipientName = recipient.userName || 'Rider';
+  const flightDate =
+    recipient.flightDate || recipient.flightDateTime?.slice(0, 10) || 'your flight date';
 
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
-    to: recipient.userEmail,
-    subject: `Trip request received for ${recipient.departingAirport}`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Hi ${recipientName},</h2>
-        <p>We received your trip request and added you to the matching pool.</p>
-        <ul>
-          <li><strong>Flight:</strong> ${recipient.flightCode}</li>
-          <li><strong>Date:</strong> ${flightDate}</li>
-          <li><strong>Airport:</strong> ${recipient.departingAirport}</li>
-        </ul>
-        <p>We will keep searching and notify you as soon as a match is found.</p>
-        <p style="margin-top: 24px;">
-          <a href="${APP_URL}/main"
-             style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-            Open Connections
-          </a>
-        </p>
-        <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          - The Connections Team
-        </p>
-      </div>
-    `,
-  });
+  const subject = `Trip request received for ${recipient.departingAirport}`;
+  const html = BRAND_BLOCK(
+    `
+    <h2 style="margin-top:0;">Hi ${esc(recipientName)},</h2>
+    <p>We received your trip request and added you to the matching pool.</p>
+    <ul>
+      <li><strong>Flight:</strong> ${esc(recipient.flightCode)}</li>
+      <li><strong>Date:</strong> ${esc(flightDate)}</li>
+      <li><strong>Airport:</strong> ${esc(recipient.departingAirport)}</li>
+    </ul>
+    <p>We will keep searching and notify you as soon as a match is found.</p>`,
+    `${APP_URL}/main`,
+    'Open Campus Connections',
+  );
+  const text =
+    `Hi ${recipientName},\n\n` +
+    `We received your trip request and added you to the matching pool.\n` +
+    `Flight ${recipient.flightCode} from ${recipient.departingAirport} on ${flightDate}.\n\n` +
+    `We'll email you as soon as we find a match.\n\n` +
+    `${APP_URL}/main`;
+
+  await send({ to: recipient.userEmail, subject, html, text });
 }
 
-/**
- * Send a "no match found" notification.
- */
+/** No-match-found notification. */
 export async function sendNoMatchNotification(recipient: TripRequest): Promise<void> {
-  const transporter = getTransporter();
-  if (!transporter || !recipient.userEmail) return;
+  if (!recipient.userEmail) return;
 
-  const recipientName = recipient.userName ?? 'Rider';
+  const recipientName = recipient.userName || 'Rider';
+  const subject = 'No match found for your upcoming trip';
+  const html = BRAND_BLOCK(
+    `
+    <h2 style="margin-top:0;">Hey ${esc(recipientName)},</h2>
+    <p>We weren't able to find a compatible match for your trip from <strong>${esc(recipient.departingAirport)}</strong>.</p>
+    <p>You may want to arrange an alternative ride. If your plans change you can always cancel and resubmit a new trip request.</p>`,
+    `${APP_URL}/main`,
+    'Open Campus Connections',
+  );
+  const text =
+    `Hey ${recipientName},\n\n` +
+    `We couldn't find a compatible match for your trip from ${recipient.departingAirport}.\n` +
+    `Please arrange an alternative ride or submit a new request.\n\n` +
+    `${APP_URL}/main`;
 
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
-    to: recipient.userEmail,
-    subject: 'No match found for your upcoming trip',
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Hey ${recipientName},</h2>
-        <p>We thank you for giving us the chance to help you find a match for your upcoming trip from <strong>${recipient.departingAirport}</strong>.</p>
-        <p>Unfortunately, we were unable to find a compatible match for your flight. We recommend arranging alternative transportation to the airport.</p>
-        <p>If your plans change, you can always cancel and resubmit a new trip request.</p>
-        <p style="margin-top: 24px;">
-          <a href="${APP_URL}/main"
-             style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-            Open Connections
-          </a>
-        </p>
-        <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          - The Connections Team
-        </p>
-      </div>
-    `,
-  });
+  await send({ to: recipient.userEmail, subject, html, text });
 }
 
-/**
- * Suggest an XL ride for riders with heavy bags.
- */
+/** Suggest an XL ride when the combined luggage is heavy. */
 export async function sendXlRideSuggestion(recipient: TripRequest): Promise<void> {
-  const transporter = getTransporter();
-  if (!transporter || !recipient.userEmail) return;
+  if (!recipient.userEmail) return;
 
-  const recipientName = recipient.userName ?? 'Rider';
+  const recipientName = recipient.userName || 'Rider';
+  const subject = 'Your luggage might need an XL ride';
+  const html = BRAND_BLOCK(
+    `
+    <h2 style="margin-top:0;">Hey ${esc(recipientName)},</h2>
+    <p>We noticed the combined luggage on your trip from <strong>${esc(recipient.departingAirport)}</strong> may not fit in a standard rideshare.</p>
+    <p>Consider booking an <strong>XL vehicle</strong> so everyone (and their bags) have room.</p>`,
+    `${APP_URL}/main`,
+    'View your trip',
+  );
+  const text =
+    `Hey ${recipientName},\n\n` +
+    `Your combined luggage may not fit in a standard rideshare. Consider booking XL from ${recipient.departingAirport}.\n\n` +
+    `${APP_URL}/main`;
 
-  await transporter.sendMail({
-    from: FROM_ADDRESS,
-    to: recipient.userEmail,
-    subject: 'Your luggage might need an XL ride',
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Hey ${recipientName},</h2>
-        <p>We noticed your combined luggage might need a little extra space. We suggest considering an <strong>XL ride</strong> for your trip from <strong>${recipient.departingAirport}</strong>.</p>
-        <p>An XL vehicle can accommodate more bags and ensure a comfortable ride to the airport.</p>
-        <p>Log in to Connections to view your trip details or update your plans.</p>
-        <p style="margin-top: 24px;">
-          <a href="${APP_URL}/main"
-             style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-            Open Connections
-          </a>
-        </p>
-        <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-          - The Connections Team
-        </p>
-      </div>
-    `,
-  });
+  await send({ to: recipient.userEmail, subject, html, text });
 }

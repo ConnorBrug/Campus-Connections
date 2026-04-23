@@ -1,192 +1,21 @@
 'use server';
 
 import { z } from 'zod';
-import type { TripRequest, UserGender } from './types';
-import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
-import { getUserProfile, saveTripRequest, changePassword, deleteCurrentUserAccount } from './auth';
-import { isValid, parse, format, isBefore, addHours, isPast, parseISO } from 'date-fns';
+import type { TripRequest } from './types';
+import { changePassword, deleteCurrentUserAccount } from './auth';
+import { addHours, isPast, parseISO } from 'date-fns';
 import { adminDb } from './firebase-admin';
 
-/* ----------------------------- Trip schema ----------------------------- */
-
-const TripDetailsSchema = z.object({
-  userId: z.string().min(1, 'User ID is required.'),
-  university: z.string().min(1, 'University is required.'),
-  flightCode: z
-    .string()
-    .min(3, 'Flight code required (e.g., UA234).')
-    .regex(/^[a-zA-Z0-9]+$/, 'Alphanumeric only.'),
-  flightDate: z.date({
-    required_error: 'Flight date is required.',
-    invalid_type_error: "That's not a valid date!",
-  }),
-  flightHour: z.string().min(1, 'Hour is required.'),
-  flightMinute: z.string().min(1, 'Minute is required.'),
-  flightPeriod: z.enum(['AM', 'PM'], { required_error: 'AM/PM is required.' }),
-  departingAirport: z
-    .string()
-    .length(3, 'Must be a 3-letter airport code.')
-    .regex(/^[a-zA-Z]{3}$/, 'Must be 3 letters for airport code.')
-    .transform((value) => value.toUpperCase()),
-  numberOfCarryons: z.coerce.number().min(0, 'Cannot be negative.').max(2, 'Max 2 carry-ons.'),
-  numberOfCheckedBags: z.coerce.number().min(0, 'Cannot be negative.').max(3, 'Max 3 checked bags.'),
-  preferredMatchGender: z.enum(['Male', 'Female', 'No preference'], {
-    required_error: 'Please select a preference.',
-  }),
-  campusArea: z.string().optional(),
-});
-
-type TripDetailsFormValues = z.infer<typeof TripDetailsSchema>;
-
-export type TripDetailsFormState = {
-  success?: boolean;
-  message?: string;
-  errors?: {
-    flightCode?: string[];
-    flightDate?: string[];
-    flightTime?: string[];
-    departingAirport?: string[];
-    numberOfCarryons?: string[];
-    numberOfCheckedBags?: string[];
-    preferredMatchGender?: string[];
-    _form?: string[];
-  };
-};
-
-const combineFlightTimeParts = (hour: string, minute: string, period: 'AM' | 'PM'): string => {
-  let h = parseInt(hour, 10);
-  if (period === 'PM' && h !== 12) h += 12;
-  else if (period === 'AM' && h === 12) h = 0;
-  return `${h.toString().padStart(2, '0')}:${minute}`;
-};
-
-/* ------------------- ACTION: submitTripDetailsAction ------------------- */
-
-export async function submitTripDetailsAction(
-  _prevState: TripDetailsFormState,
-  data: TripDetailsFormValues
-): Promise<TripDetailsFormState> {
-  try {
-    const validated = TripDetailsSchema.safeParse(data);
-    if (!validated.success) {
-      return {
-        success: false,
-        message: 'Invalid form data.',
-        errors: validated.error.flatten().fieldErrors,
-      };
-    }
-
-    const {
-      userId,
-      flightCode,
-      flightDate,
-      flightHour,
-      flightMinute,
-      flightPeriod,
-      departingAirport,
-      numberOfCarryons,
-      numberOfCheckedBags,
-      university,
-      preferredMatchGender,
-      campusArea,
-    } = validated.data;
-
-    const [currentUser, existingTrip] = await Promise.all([
-      getUserProfile(userId),
-      getActiveTripForUser(userId),
-    ]);
-
-    if (!currentUser) {
-      return {
-        success: false,
-        message: 'You must be logged in to submit a trip.',
-        errors: { _form: ['User profile could not be loaded.'] },
-      };
-    }
-
-    if (currentUser.isBanned) {
-      return {
-        success: false,
-        message: 'Your account is suspended from creating new trips.',
-        errors: { _form: ['Account suspended.'] },
-      };
-    }
-
-    if (existingTrip) {
-      return {
-        success: false,
-        message: 'You already have a pending trip.',
-        errors: { _form: ['An active trip already exists.'] },
-      };
-    }
-
-    const flightTime = combineFlightTimeParts(flightHour, flightMinute, flightPeriod);
-    const flightDateTime = parse(
-      `${format(flightDate, 'yyyy-MM-dd')}T${flightTime}:00`,
-      "yyyy-MM-dd'T'HH:mm:ss",
-      new Date()
-    );
-
-    if (!isValid(flightDateTime)) {
-      return {
-        success: false,
-        message: 'Invalid date or time.',
-        errors: { _form: ['The provided date/time is invalid.'] },
-      };
-    }
-
-    const threeHoursFromNow = addHours(new Date(), 3);
-    if (isBefore(flightDateTime, threeHoursFromNow)) {
-      return {
-        success: false,
-        message: 'Trip must be scheduled at least 3 hours in advance.',
-        errors: { _form: ['Please select a flight time at least 3 hours from now.'] },
-      };
-    }
-
-    // ---- Normalize nullable fields (keeps TS happy) ----
-    const safeGender: UserGender = currentUser.gender ?? 'Prefer not to say';
-    const safePhotoUrl: string | undefined = currentUser.photoUrl ?? undefined;
-    const safeName: string | null = currentUser.name ?? null;
-    const safeEmail: string | null = currentUser.email ?? null;
-
-    // --- Save trip (include required nullables) ---
-    const userTripRequest: Omit<TripRequest, 'id' | 'createdAt'> = {
-      userId: currentUser.id,
-      userName: safeName,
-      userEmail: safeEmail,
-      userPhotoUrl: safePhotoUrl,
-      flightCode,
-      flightDate: format(flightDate, 'yyyy-MM-dd'),
-      flightTime,
-      flightDateTime: flightDateTime.toISOString(),
-      departingAirport,
-      numberOfCarryons,
-      numberOfCheckedBags,
-      university,
-      campusArea,
-      status: 'pending',
-      userPreferences: preferredMatchGender,
-      userGender: safeGender,
-      matchId: null,
-      matchedUserId: null,
-      noMatchWarningSent: false,
-      cancellationAlert: false,
-    };
-
-    await saveTripRequest(userTripRequest);
-
-    revalidatePath('/dashboard');
-    redirect('/trip-submitted');
-  } catch {
-    return {
-      success: false,
-      message: 'An unexpected error occurred. Please try again.',
-      errors: { _form: ['An internal error prevented the trip from being saved.'] },
-    };
-  }
-}
+/* --------------------------------------------------------------------
+ * The `submitTripDetailsAction` server-action that used to live here was
+ * removed because it trusted a client-provided `userId` field and wrote
+ * trips under that ID without cross-checking the session cookie. The
+ * canonical path is now `POST /api/trips`, which reads `userId` from
+ * `verifySessionCookie(...)` and is rate-limited + sanitized.
+ *
+ * If you need a server-action wrapper in the future, make it a thin
+ * proxy over the API route rather than re-implementing the logic.
+ * ------------------------------------------------------------------ */
 
 /* ------------------- Server getActiveTripForUser ------------------- */
 

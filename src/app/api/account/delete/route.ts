@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { isRateLimited } from '@/lib/rate-limit';
+import { assertSameOrigin } from '@/lib/csrf';
 
 export async function POST(req: Request) {
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
   if (isRateLimited(`delete:${ip}`, 3, 60_000)) {
     return NextResponse.json({ message: 'Too many requests' }, { status: 429 });

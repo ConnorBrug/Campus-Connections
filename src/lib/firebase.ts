@@ -4,13 +4,28 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
+// NB: Firebase Web "apiKey" and related NEXT_PUBLIC_* values are public
+// identifiers - they are baked into the client bundle by design. We still
+// require them via env instead of hardcoding because:
+//   1. hardcoding makes it look like a secret and causes reviewer churn,
+//   2. it prevents config drift between staging / production,
+//   3. a missing value should fail the build loudly, not silently fall
+//      back to a different project.
+function req(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return v;
+}
+
 const firebaseConfig: FirebaseOptions = {
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "connections-hw9ha",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:689188733774:web:5dfbbfa493a7d8f2c4141f",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "connections-hw9ha.firebasestorage.app",
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBKUwJiswvgULDhk-jb4kGharvZdl29_EM",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "connections-hw9ha.firebaseapp.com",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "689188733774",
+  projectId:         req('NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  appId:             req('NEXT_PUBLIC_FIREBASE_APP_ID'),
+  storageBucket:     req('NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  apiKey:            req('NEXT_PUBLIC_FIREBASE_API_KEY'),
+  authDomain:        req('NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  messagingSenderId: req('NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

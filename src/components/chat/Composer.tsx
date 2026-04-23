@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SendHorizonal } from 'lucide-react';
 import { setTypingStatus } from '@/lib/auth';
+import { sanitizeMultiline } from '@/lib/sanitize';
 
 // Keep in sync with firestore.rules (messages.create text.size() check).
 const MAX_MESSAGE_LEN = 2000;
@@ -37,9 +38,12 @@ export default function Composer({
   }, [chatId]);
 
   const send = async () => {
-    const t = text.trim();
+    // Sanitize BEFORE the length check so a payload of zero-width spaces
+    // can't pass the "is non-empty" gate. sanitizeMultiline preserves \n
+    // for multi-line messages, strips other control / invisible characters,
+    // normalizes Unicode, and caps length.
+    const t = sanitizeMultiline(text, MAX_MESSAGE_LEN);
     if (!t) return;
-    if (t.length > MAX_MESSAGE_LEN) return;
     setText('');
     await onSend(t);
     try { await setTypingStatus(chatId, null); } catch {}

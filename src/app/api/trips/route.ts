@@ -4,10 +4,15 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { UserProfile } from '@/lib/types';
 import { isRateLimited } from '@/lib/rate-limit';
+import { sanitizeStrict } from '@/lib/sanitize';
+import { assertSameOrigin } from '@/lib/csrf';
 
 const COOKIE_NAME = '__session';
 
 export async function POST(req: Request) {
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
   if (isRateLimited(`trips:${ip}`, 5, 60_000)) {
     return NextResponse.json({ message: 'Too many requests' }, { status: 429 });
@@ -48,6 +53,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Invalid flightDateTime' }, { status: 400 });
     }
 
+    // Sanitize user-controllable strings before they land in Firestore.
+    // sanitizeStrict drops control/zero-width/RTL tricks and non-name-shaped
+    // characters, collapses whitespace, and caps length.
+    const cleanFlightCode = sanitizeStrict(flightCode, 10).toUpperCase();
+    const cleanAirport = sanitizeStrict(departingAirport, 10).toUpperCase();
+    const cleanCampusArea = campusArea == null ? null : sanitizeStrict(campusArea, 40) || null;
+    const allowedGenders = new Set(['Male', 'Female', 'No preference']);
+    if (!allowedGenders.has(preferredMatchGender)) {
+      return NextResponse.json({ message: 'Invalid preferredMatchGender' }, { status: 400 });
+    }
+    if (!cleanFlightCode || !cleanAirport) {
+      return NextResponse.json({ message: 'Invalid flight code or airport' }, { status: 400 });
+    }
+    const carryons = Number(numberOfCarryons);
+    const checked = Number(numberOfCheckedBags);
+    if (!Number.isFinite(carryons) || !Number.isFinite(checked) ||
+        carryons < 0 || checked < 0 || carryons > 5 || checked > 5) {
+      return NextResponse.json({ message: 'Invalid bag counts' }, { status: 400 });
+    }
+
     // Load canonical user profile on the server
     const userRef = adminDb.collection('users').doc(uid);
     const userSnap = await userRef.get();
@@ -59,7 +84,6 @@ export async function POST(req: Request) {
     if (user.isBanned) {
       return NextResponse.json({ message: 'Your account is suspended from creating new trips.' }, { status: 403 });
     }
-
     const tripRef = adminDb.collection('tripRequests').doc();
     const newTrip = {
       id: tripRef.id,
@@ -68,14 +92,14 @@ export async function POST(req: Request) {
       userEmail: user.email ?? decoded.email,
       userPhotoUrl: user.photoUrl ?? null,
       university: user.university ?? '',
-      campusArea: campusArea || user.campusArea || null,
-      flightCode: String(flightCode || '').toUpperCase(),
+      campusArea: cleanCampusArea || user.campusArea || null,
+      flightCode: cleanFlightCode,
       flightDateTime: date.toISOString(),
       flightDate: date.toISOString().slice(0, 10),
       flightTime: date.toISOString().slice(11, 16),
-      departingAirport,
-      numberOfCarryons: Number(numberOfCarryons),
-      numberOfCheckedBags: Number(numberOfCheckedBags),
+      departingAirport: cleanAirport,
+      numberOfCarryons: carryons,
+      numberOfCheckedBags: checked,
       status: 'pending' as const,
       createdAt: Timestamp.now(),
       matchId: null,

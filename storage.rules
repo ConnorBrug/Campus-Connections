@@ -1,12 +1,16 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Profile photos: only the owner can upload, anyone signed in can read
+    // Profile photos: only the owner can upload, anyone signed in can read.
+    // Size cap matches the client-side browser-image-compression target, and
+    // the contentType check prevents uploading arbitrary binaries (HTML,
+    // executables, etc.) under an image-shaped path.
     match /profile-photos/{userId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
                    && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024;
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
     }
 
     // Deny everything else

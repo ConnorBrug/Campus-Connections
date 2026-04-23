@@ -8,6 +8,7 @@ import {
   fitsCapacity, fitsGroupCapacity, isLightBags,
 } from './utils';
 import { sendMatchNotification, sendNoMatchNotification, sendXlRideSuggestion } from './email';
+import { sendMatchSms, sendNoMatchSms, sendXlRideSuggestionSms } from './sms';
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -413,9 +414,11 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
 
     for (const t of fb.xlSuggested) {
       sendXlRideSuggestion(t).catch(() => {});
+      sendXlRideSuggestionSms(t).catch(() => {});
     }
     for (const t of fb.noMatchWarnings) {
       sendNoMatchNotification(t).catch(() => {});
+      sendNoMatchSms(t).catch(() => {});
     }
   }
 
@@ -427,6 +430,7 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
         const partners = group.filter(x => x.userId !== rider.userId);
         if (partners.length > 0) {
           sendMatchNotification(rider, partners[0]).catch(() => {});
+          sendMatchSms(rider, partners[0]).catch(() => {});
         }
       }
     }

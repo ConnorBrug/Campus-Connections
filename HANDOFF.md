@@ -48,9 +48,31 @@ Paste this whole file into a fresh Claude Cowork chat so the new assistant can p
 
 ### LOW (nice to have)
 
-- [ ] **CSRF / origin checks** on POST endpoints in `src/app/api/*`. Rely on SameSite=lax for most, but add origin checks on anything state-changing from outside the app.
+- [x] **CSRF / origin checks** on POST endpoints in `src/app/api/*`. ✅ Done 2026-04-22. See `src/lib/csrf.ts` (`assertSameOrigin`) — wired into every state-changing route (trips, profile, account/delete, session, manual-rides/match, cancel, delay).
 - [ ] **Favicons/PWA.** Generate a full favicon set (16, 32, 180, 192, 512) from the existing SVG.
 - [ ] **Accessibility audit.** Ensure all form inputs have labels, buttons have accessible names, color contrast passes WCAG AA on the brand palette.
+
+## 3.5 Completed security + dependency work (2026-04-22)
+
+Full security audit across 12 scope areas (auth/session, Firestore rules, API authorization, input sanitization, email/SMS injection, CSP, Storage rules, env hygiene, open redirects/SSRF, rate limiting, Cloud Functions triggers, chat expiry). All critical/high/medium findings closed. Key fixes:
+
+- **Session cookie verification.** `POST /api/session` now `verifyIdToken` → checks `email_verified` → enforces 5-minute auth_time freshness before minting the session cookie. Both POST and DELETE gated by `assertSameOrigin`.
+- **Dev impersonation hardening.** Removed hardcoded API key fallback in `src/app/api/dev/impersonate/route.ts`. Stopped echoing Firebase error messages.
+- **Firebase env enforcement.** `src/lib/firebase.ts` now throws if `NEXT_PUBLIC_FIREBASE_*` env vars are missing — no silent fallbacks.
+- **Photo URL allowlist.** `updateUserProfile` in `src/lib/auth.ts` restricts photoURLs to `firebasestorage.googleapis.com`, `*.firebasestorage.app`, and `lh3.googleusercontent.com`. Same check is applied for both the Firestore payload and the Firebase Auth `photoURL` sync.
+- **Storage rules.** Added `contentType` matcher (`image/(jpeg|png|webp|gif)`) alongside existing UID/path scoping and size limits.
+- **CSP + connect-src + img-src.** Tightened in `next.config.ts` — `img-src` and `connect-src` restricted to specific Firebase + Google OAuth hosts only.
+- **Session ping.** Added 60/min/IP rate limit to `/api/session/ping`. Stopped echoing Firebase error messages.
+- **Firestore rules — chat expiry.** `allow create` on `/chats/{id}` now requires `expiresAt` to be a future timestamp. `allow update` must preserve `userIds` and keep `expiresAt` as a timestamp.
+- **Manual pairing admin gate.** `functions.https.onCall` for `manualPairing` now checks `context.auth.token.admin === true`. Window params clamped to `[0, 168]` hours.
+- **Client-trusted userId removed.** Deleted `submitTripDetailsAction` server action (it trusted client-provided `userId`). Canonical path is now `POST /api/trips` which derives uid from the session cookie.
+
+**Dependency upgrades (2026-04-22):**
+
+- `functions/`: bumped to `firebase-admin@^13`, `firebase-functions@^6`, `vitest@^3`. Swapped `import * as functions from 'firebase-functions'` → `'firebase-functions/v1'` in `functions/src/index.ts` (v6 moved the v1 namespace to a subpath).
+- Root: `npm audit fix` cleared `fast-xml-parser` (critical), `protobufjs` (critical), `jws` (high — HMAC bypass in jsonwebtoken), `lodash`, `node-forge`, `minimatch`, `picomatch`, `socket.io-parser`, `glob`, `yaml`, `brace-expansion`. Bumped Next from `15.5.9` → `^15.5.15` to escape the HTTP smuggling / DoS range. **Did not take Next 16 (major bump breaks Turbopack compilation in this codebase and introduces middleware→proxy rename).**
+- **Final audit state:** functions 9 low, root 10 (2 low + 8 moderate). All remaining vulns are transitive inside the `firebase-admin` → `@google-cloud/storage` / `@google-cloud/firestore` chain (`@tootallnate/once`, `retry-request`, `uuid` v3/v5/v6 buf bounds). Google's SDK doesn't pass user input to these functions, so not exploitable in this app. Will clear upstream when Firebase bumps `@google-cloud/storage` past `uuid@9`.
+- **Do NOT run `npm audit fix --force`** on root or functions — it would downgrade `firebase-admin` to v10 and re-introduce all the criticals we just fixed.
 
 ## 4. Files most relevant to the pending work
 
@@ -70,6 +92,8 @@ Paste this whole file into a fresh Claude Cowork chat so the new assistant can p
 ## 5. Gotchas you'll hit
 
 - **Windows-mount null-byte corruption.** When using the `Write` tool on this Windows-mounted folder, large files can be truncated or padded with `\x00` bytes. Workaround: write the file to `/tmp` via a bash heredoc, then `cp` it into the destination. Verify with `wc -c` + `tail` afterward.
+- **Heredoc-append duplicates file tails.** The `cat >>` recovery pattern (used when `Edit` truncates a file) can leave a duplicated block at the end if the heredoc overlaps with surviving content — exactly what happened to `src/lib/auth.ts` during the security audit (lines 678-722 got duplicated twice). After any heredoc recovery, always grep for suspiciously duplicated function signatures (`grep -n "export async function X" file.ts` should return 1 result per function, not 2+).
+- **Linux-mount can show a stale view.** The `mcp__workspace__bash` mount occasionally sees an older/shorter version of a file than the `Read`/`Edit` tools do. When in doubt, `Read` is the source of truth because the user's `tsc` reads the same file the `Read` tool sees.
 - **Subagent hallucinations.** A prior audit claimed `/onboarding` didn't exist and `sendTripRequestConfirmation` was missing from `functions/src/email.ts`. Both claims were wrong. Verify audit findings against the actual files with `Read` or `grep` before acting on them.
 - **Firestore composite indexes** must be deployed (`firebase deploy --only firestore:indexes`) before the matching cron will work in prod. Emulator ignores them.
 - **Env vars on Vercel.** Firebase Admin creds go in Vercel → Project → Settings → Environment Variables: `FIREBASE_SERVICE_ACCOUNT_JSON` (or split triple). Don't commit them. `.env.local` stays gitignored.
@@ -80,4 +104,4 @@ Paste this whole file into a fresh Claude Cowork chat so the new assistant can p
 
 ---
 
-*Generated from prior chat on 2026-04-21.*
+*Generated from prior chat on 2026-04-21. Updated 2026-04-22 with security audit + dep upgrade results.*

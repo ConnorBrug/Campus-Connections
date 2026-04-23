@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { isRateLimited } from '@/lib/rate-limit';
+import { assertSameOrigin } from '@/lib/csrf';
 import type { Match, TripRequest } from '@/lib/types';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -63,6 +64,9 @@ function chatExpiryFromTrips(trips: TripRequest[]) {
 }
 
 export async function POST(req: Request) {
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
   if (isRateLimited(`manual-match:${ip}`, 10, 60_000)) {
     return NextResponse.json({ message: 'Too many requests' }, { status: 429 });

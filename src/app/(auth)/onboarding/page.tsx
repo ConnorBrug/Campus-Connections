@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,8 +23,15 @@ import { normalizeName } from '@/lib/utils';
 const currentYear = new Date().getFullYear();
 const validYears = [currentYear + 1, currentYear + 2, currentYear + 3, currentYear + 4].map(String);
 
-// E.164-ish phone: optional leading +, 10-15 digits. Empty allowed (optional).
-const PHONE_RE = /^\+?[0-9]{10,15}$/;
+// US-only E.164: exactly "+1XXXXXXXXXX". PhoneInput always emits this shape,
+// so the schema never needs to see a raw/formatted string.
+const PHONE_RE = /^\+1[0-9]{10}$/;
+
+// Feature flag: only show the phone + SMS opt-in block when Twilio is wired
+// up. Flip by setting NEXT_PUBLIC_SMS_ENABLED=true in the deploy env (Vercel).
+// When off, we never collect a phone number and the backend's silent-no-op
+// SMS path keeps everything safe.
+const SMS_ENABLED = process.env.NEXT_PUBLIC_SMS_ENABLED === 'true';
 
 const Schema = z.object({
   firstName: z.string().min(1, 'First name is required.'),
@@ -35,8 +43,8 @@ const Schema = z.object({
   // Phone is fully optional. If present it must look like a phone number.
   // SMS opt-in is downgraded silently at save time when no phone is provided.
   phoneNumber: z.string().optional().refine(
-    (v) => !v || PHONE_RE.test(v.replace(/[\s\-()]/g, '')),
-    { message: 'Enter a valid phone number (e.g. +15555550123) or leave blank.' },
+    (v) => !v || PHONE_RE.test(v),
+    { message: 'Enter a valid US phone number or leave blank.' },
   ),
   smsNotificationsEnabled: z.boolean().optional(),
 });
@@ -123,16 +131,23 @@ export default function OnboardingPage() {
     try {
       const normalizedFullName = normalizeName(`${values.firstName} ${values.lastName}`);
 
-      // Normalize phone: strip spaces / dashes / parens. Empty => null (clear).
-      const rawPhone = (values.phoneNumber ?? '').replace(/[\s\-()]/g, '');
-      const phoneToSave = rawPhone ? (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`) : null;
+      // PhoneInput always emits either "" or a validated "+1XXXXXXXXXX" E.164
+      // string, so there's nothing to re-normalize here — just turn empty
+      // into null so we clear the field instead of storing "".
+      const phoneToSave = values.phoneNumber && values.phoneNumber.length > 0
+        ? values.phoneNumber
+        : null;
 
       await updateUserProfile(profile.id, {
         name: normalizedFullName,
         gender: values.gender,
         graduationYear: parseInt(values.graduationYear, 10),
-        phoneNumber: phoneToSave,
-        smsNotificationsEnabled: !!values.smsNotificationsEnabled && !!phoneToSave,
+        // When SMS is disabled at the feature-flag level we never persist a
+        // phone number or opt-in boolean, even if the form had stale values.
+        phoneNumber: SMS_ENABLED ? phoneToSave : null,
+        smsNotificationsEnabled: SMS_ENABLED
+          ? !!values.smsNotificationsEnabled && !!phoneToSave
+          : false,
         ...(showCampus ? { campusArea: values.campusArea } : {}),
       });
 
@@ -250,27 +265,28 @@ export default function OnboardingPage() {
                 )}/>
               )}
 
+              {SMS_ENABLED && (
               <div className="rounded-md border p-4 space-y-3 bg-muted/20">
                 <FormField name="phoneNumber" control={form.control} render={({ field }) => {
                   const phoneValue = (field.value ?? '').trim();
-                  const phoneOk = !phoneValue || PHONE_RE.test(phoneValue.replace(/[\s\-()]/g, ''));
-                  const hasUsablePhone = phoneOk && phoneValue.length > 0;
+                  // PhoneInput only ever emits "" or a valid "+1XXXXXXXXXX",
+                  // so "has a usable phone" collapses to "value is non-empty".
+                  const hasUsablePhone = PHONE_RE.test(phoneValue);
                   return (
                     <>
                       <FormItem>
                         <FormLabel>Phone number <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                         <FormControl>
-                          <Input
-                            type="tel"
-                            inputMode="tel"
-                            autoComplete="tel"
-                            placeholder="+1 555 555 0123"
-                            {...field}
+                          <PhoneInput
                             value={field.value ?? ''}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
                           />
                         </FormControl>
                         <FormDescription>
-                          Optional. Only used to text you about new matches - never shared.
+                          US numbers only. Only used to text you about new matches - never shared.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -298,20 +314,29 @@ export default function OnboardingPage() {
                   );
                 }}/>
               </div>
+              )}
 
               {/*
                 Keep submit enabled even while the form is invalid — that way a
                 confused user who clicks Continue with missing fields gets the
-                inline FormMessage errors + focus on the first invalid field,
                 instead of a silently-disabled button with no feedback.
               */}
               <Button type="submit" className="w-full" disabled={saving}>
-                {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving</>) : 'Continue'}
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    Continue
+                  </>
+                )}
               </Button>
             </form>
           </Form>
         </CardContent>
-        <CardFooter />
       </Card>
     </div>
   );

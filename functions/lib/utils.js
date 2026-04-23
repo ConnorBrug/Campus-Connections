@@ -5,11 +5,35 @@ exports.genderCompatible = genderCompatible;
 exports.groupGenderCompatible = groupGenderCompatible;
 // functions/src/utils.ts
 const types_1 = require("./types");
-const toMs = (iso) => new Date(iso).getTime();
+/**
+ * Parse a trip's flightDateTime string to epoch ms. The app always writes
+ * ISO-8601 (see submitTripDetailsAction). If a non-ISO string ever reaches the
+ * matcher, `new Date()` returns NaN, which Math.abs/compare silently treat as
+ * "never within window" - so such trips simply won't match rather than
+ * producing bogus matches. We surface the malformed value in logs.
+ */
+const toMs = (iso) => {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) {
+        console.warn('[matching] flightDateTime failed to parse:', iso);
+    }
+    return t;
+};
 const withinOneHour = (a, b) => Math.abs(toMs(a.flightDateTime) - toMs(b.flightDateTime)) <= 60 * 60 * 1000;
 exports.withinOneHour = withinOneHour;
 const withinTwoHours = (a, b) => Math.abs(toMs(a.flightDateTime) - toMs(b.flightDateTime)) <= 2 * 60 * 60 * 1000;
 exports.withinTwoHours = withinTwoHours;
+/**
+ * Two riders can share a standard pair if they go to the same university,
+ * same airport, and either (a) both have a campusArea that's identical, or
+ * (b) at least one has no campusArea set.
+ *
+ * CAVEAT: for a school with multiple campus areas (e.g. BC's 2k/Newton/
+ * CoRo/Upper/Lower), a rider who somehow has a null campusArea will be
+ * treated as compatible with every campus. Today the onboarding flow
+ * enforces campusArea for BC, so this can only happen from manually-edited
+ * docs. Revisit when a second multi-campus school is added.
+ */
 const sameCampusAirport = (a, b) => {
     if (a.university !== b.university)
         return false;
@@ -18,7 +42,7 @@ const sameCampusAirport = (a, b) => {
     return a.departingAirport === b.departingAirport;
 };
 exports.sameCampusAirport = sameCampusAirport;
-/** Like sameCampusAirport but ignores campus area — only checks university + airport. */
+/** Like sameCampusAirport but ignores campus area - only checks university + airport. */
 const sameUniversityAirport = (a, b) => {
     if (a.university !== b.university)
         return false;

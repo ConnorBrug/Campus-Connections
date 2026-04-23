@@ -41,6 +41,7 @@ exports.runPairingForWindow = runPairingForWindow;
 const admin = __importStar(require("firebase-admin"));
 const utils_1 = require("./utils");
 const email_1 = require("./email");
+const sms_1 = require("./sms");
 if (!admin.apps.length)
     admin.initializeApp();
 const db = admin.firestore();
@@ -74,6 +75,19 @@ function pickBestCandidate(a, candidates) {
         return { best: bestFallback, genderRelaxed: true };
     return { best: null, genderRelaxed: false };
 }
+/**
+ * Score how well `b` pairs with `a`. Higher is better.
+ *
+ * Weights are intentionally lopsided:
+ *   - sameFlight:  +10000   (same flight = same terminal + same ride timing;
+ *                            dominates everything short of capacity failure)
+ *   - bagSpread:   +100 * |aBags - bBags|  (encourages mixing a heavy rider
+ *                            with a light rider so both fit in capacity)
+ *   - timeGap:     - minutes between flights (soft tiebreaker)
+ *
+ * Capacity / gender / campus / time-window filters happen BEFORE scoring;
+ * candidateScore is called only on riders that are already viable.
+ */
 function candidateScore(a, b) {
     const sameFlight = a.flightCode && b.flightCode && a.flightCode === b.flightCode ? 1 : 0;
     const aBags = (a.numberOfCheckedBags || 0) + (a.numberOfCarryons || 0);
@@ -159,7 +173,6 @@ function writeMatchToBatch(batch, riders, tier, reason) {
             fallbackTier: tier,
         });
     }
-    // Auto-create chat document + system message for the matched riders
     const chatId = riders.map(r => r.userId).sort().join('_');
     const chatRef = db.collection('chats').doc(chatId);
     const lines = riders.map(r => {
@@ -205,7 +218,6 @@ function computeFallbacks(unmatched, _allPending) {
         (lightBagBuckets.get(key) ?? lightBagBuckets.set(key, []).get(key)).push(t);
     }
     for (const bucket of lightBagBuckets.values()) {
-        // Sort by flight time
         bucket.sort((a, b) => new Date(a.flightDateTime).getTime() - new Date(b.flightDateTime).getTime());
         let i = 0;
         while (i < bucket.length) {
@@ -337,7 +349,6 @@ async function runPairingForWindow(hoursFrom, hoursTo) {
         matchedTrips.push([a, b]);
         created++;
     }
-    // --- Fallback matching ---
     let fallbacks = 0;
     if (unmatched.length > 0) {
         const fb = computeFallbacks(unmatched, pending);
@@ -373,22 +384,23 @@ async function runPairingForWindow(hoursFrom, hoursTo) {
             });
             fallbacks++;
         }
-        // Best-effort email notifications for fallback tiers
         for (const t of fb.xlSuggested) {
             (0, email_1.sendXlRideSuggestion)(t).catch(() => { });
+            (0, sms_1.sendXlRideSuggestionSms)(t).catch(() => { });
         }
         for (const t of fb.noMatchWarnings) {
             (0, email_1.sendNoMatchNotification)(t).catch(() => { });
+            (0, sms_1.sendNoMatchSms)(t).catch(() => { });
         }
     }
     if (created > 0 || unmatched.length > 0) {
         await batch.commit();
-        // Send email notifications for all matches (best-effort)
         for (const group of matchedTrips) {
             for (const rider of group) {
                 const partners = group.filter(x => x.userId !== rider.userId);
                 if (partners.length > 0) {
                     (0, email_1.sendMatchNotification)(rider, partners[0]).catch(() => { });
+                    (0, sms_1.sendMatchSms)(rider, partners[0]).catch(() => { });
                 }
             }
         }

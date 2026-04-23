@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import { isRateLimited } from '@/lib/rate-limit';
+import { assertSameOrigin } from '@/lib/csrf';
 
 const COOKIE_NAME = '__session';
 
@@ -9,6 +10,9 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ id?: string }> }
 ) {
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
   const { id } = await context.params;
   const tripId = typeof id === 'string' ? id : undefined;
 

@@ -28,6 +28,7 @@ import { auth, db, storage } from './firebase';
 import type { UserProfile, TripRequest, FlaggedEntry, Match, FirestoreTimestamp } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
 import { normalizeName } from './utils';
+import { sanitizeStrict, sanitizeText } from './sanitize';
 
 // Localize Firebase OOB emails
 auth.useDeviceLanguage();
@@ -349,13 +350,49 @@ export async function uploadProfilePhoto(userId: string, file: File): Promise<st
   return getDownloadURL(storageRef);
 }
 
+// Allowlist of hosts whose URLs may be written to UserProfile.photoUrl.
+// Must stay in sync with the server-side schema in
+// src/app/api/profile/route.ts. Any other host is dropped silently
+// (we don't reject the whole write - just refuse to touch photoUrl).
+const PHOTO_URL_HOST_RE =
+  /^https:\/\/(firebasestorage\.googleapis\.com|[A-Za-z0-9-]+\.firebasestorage\.app|lh3\.googleusercontent\.com)\//;
+
+function isAllowedPhotoUrl(v: unknown): v is string {
+  return typeof v === 'string' && PHOTO_URL_HOST_RE.test(v);
+}
+
 export async function updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<UserProfile> {
   const userDocRef = doc(db, 'users', userId);
-  
+
   const updatePayload: Partial<UserProfile> = omitUndefined(data);
 
-  if (updatePayload.name) {
-    updatePayload.name = normalizeName(updatePayload.name);
+  // Sanitize every user-controllable string field before it hits Firestore.
+  // Strict sanitizer drops control/zero-width/RTL tricks and caps length;
+  // this is an *input-side* gate — email/SMS templates still encode per-surface.
+  if (typeof updatePayload.name === 'string') {
+    updatePayload.name = normalizeName(sanitizeStrict(updatePayload.name, 80));
+  }
+  if (typeof updatePayload.campusArea === 'string') {
+    updatePayload.campusArea = sanitizeStrict(updatePayload.campusArea, 40);
+  }
+  if (typeof (updatePayload as { bio?: string }).bio === 'string') {
+    (updatePayload as { bio?: string }).bio = sanitizeText(
+      (updatePayload as { bio?: string }).bio,
+      500,
+    );
+  }
+  // Reject photoUrl values that don't match our storage hosts. Without this
+  // gate a compromised/outdated client could set photoUrl to an attacker-
+  // controlled URL, which is then rendered in <Image> and emitted in email
+  // templates. The server-side API route has the same check; this is the
+  // belt for the suspenders.
+  if ('photoUrl' in updatePayload) {
+    const pu = (updatePayload as { photoUrl?: unknown }).photoUrl;
+    if (pu === null) {
+      // allow explicit clearing
+    } else if (!isAllowedPhotoUrl(pu)) {
+      delete (updatePayload as { photoUrl?: unknown }).photoUrl;
+    }
   }
 
   // 1) Update Firestore document
@@ -366,7 +403,16 @@ export async function updateUserProfile(userId: string, data: Partial<UserProfil
     if (auth.currentUser) {
       const authUpdatePayload: { displayName?: string | null; photoURL?: string | null } = {};
       if (updatePayload.name) authUpdatePayload.displayName = updatePayload.name;
-      if ('photoUrl' in data && typeof data.photoUrl === 'string') authUpdatePayload.photoURL = data.photoUrl;
+      // Use the already-validated value from updatePayload, not the raw
+      // client-supplied `data.photoUrl`, so an attacker can't bypass the
+      // host allowlist by sanitizing the Firestore write but slipping
+      // through to the Auth record.
+      if ('photoUrl' in updatePayload) {
+        const pu = (updatePayload as { photoUrl?: string | null }).photoUrl;
+        if (pu === null || isAllowedPhotoUrl(pu)) {
+          authUpdatePayload.photoURL = pu ?? null;
+        }
+      }
       if (Object.keys(authUpdatePayload).length) {
         await fbUpdateProfile(auth.currentUser, authUpdatePayload);
       }

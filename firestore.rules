@@ -71,12 +71,20 @@ service cloud.firestore {
 
     match /chats/{chatId} {
       allow read: if isChatParticipant(chatId);
+      // expiresAt is what drives the chat-TTL eviction and the
+      // chatIsOpen(chatId) gate on the messages subcollection. Without
+      // it, a chat would be immortal + orphan-able. Require it on
+      // create, and require every update to keep it present (so
+      // participants can't delete the field to extend the chat forever).
       allow create: if isSignedIn()
                     && request.resource.data.userIds is list
                     && request.resource.data.userIds.size() >= 2
-                    && request.auth.uid in request.resource.data.userIds;
+                    && request.auth.uid in request.resource.data.userIds
+                    && request.resource.data.expiresAt is timestamp
+                    && request.resource.data.expiresAt > request.time;
       allow update: if isChatParticipant(chatId)
-                    && request.resource.data.userIds == resource.data.userIds;
+                    && request.resource.data.userIds == resource.data.userIds
+                    && request.resource.data.expiresAt is timestamp;
       allow delete: if false;
 
       match /messages/{msgId} {

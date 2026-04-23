@@ -90,7 +90,11 @@ git push
    | `NEXT_PUBLIC_FIREBASE_APP_ID` | from Firebase |
    | `NEXT_PUBLIC_BASE_URL` | `https://campus-connections.com` |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | paste the whole service-account JSON on one line |
-   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | your SMTP provider |
+   | `RESEND_API_KEY` | from https://resend.com/api-keys (needed for transactional emails) |
+   | `EMAIL_FROM` | e.g. `Campus Connections <noreply@campus-connections.com>` — domain must be verified in Resend |
+   | `TWILIO_ACCOUNT_SID` | from Twilio Console (for match SMS) |
+   | `TWILIO_AUTH_TOKEN` | from Twilio Console |
+   | `TWILIO_FROM_NUMBER` | E.164 Twilio number, e.g. `+15551234567` |
    | `NEXT_PUBLIC_EMAIL_WHITELIST` | optional — comma-separated test emails |
 
    Apply each to **Production, Preview, and Development**.
@@ -196,20 +200,35 @@ you-go)** plan.
 
 1. Firebase Console → **Usage and billing** → upgrade project to **Blaze**.
    (You get a generous free tier; for your volume expect $0-1/month.)
-2. Set SMTP as Firebase secrets (the Functions use these for match emails):
+2. Set notification secrets for Cloud Functions (used by `onTripCreated`,
+   `pairMatchNoon`, `pairMatchHourly`):
 
    ```bash
    firebase use connections-hw9ha
-   firebase functions:secrets:set SMTP_HOST
-   firebase functions:secrets:set SMTP_USER
-   firebase functions:secrets:set SMTP_PASS
-   firebase functions:secrets:set SMTP_PORT  # optional
-   firebase functions:secrets:set APP_URL    # optional, defaults to campus-connections.com
-   firebase functions:secrets:set EMAIL_FROM # optional
+
+   # Email (Resend) — required if you want match emails to actually send.
+   # If you skip these, email calls become silent no-ops (matching still works).
+   firebase functions:secrets:set RESEND_API_KEY
+   firebase functions:secrets:set EMAIL_FROM   # optional, defaults to noreply@campus-connections.com
+   firebase functions:secrets:set APP_URL      # optional, defaults to https://campus-connections.com
+
+   # SMS (Twilio) — required if you want match text messages to send.
+   # If you skip these, SMS calls become silent no-ops.
+   firebase functions:secrets:set TWILIO_ACCOUNT_SID
+   firebase functions:secrets:set TWILIO_AUTH_TOKEN
+   firebase functions:secrets:set TWILIO_FROM_NUMBER   # E.164, e.g. +15551234567
    ```
 
-   Tip: if your SMTP provider is Resend / Gmail / SendGrid, use app-specific
-   SMTP creds — don't use your normal Gmail password.
+   Notes:
+   - Email: the `EMAIL_FROM` domain must be verified in Resend. During early
+     testing you can also use Resend's built-in `onboarding@resend.dev` sender.
+   - SMS: Twilio requires you to purchase a phone number ($1/mo) and, for
+     US traffic, register a low-volume A2P 10DLC campaign. Until that's
+     approved you'll see delivery errors in the Twilio logs even though the
+     code path is correct.
+   - Both providers are opt-in at the user level: SMS only sends when the
+     user has both `phoneNumber` set AND `smsNotificationsEnabled === true`
+     on their profile doc (see onboarding form / profile settings).
 
 3. Build & deploy:
 
@@ -382,36 +401,55 @@ needing a school account on hand. It is dead code in production builds.
 
 ---
 
-## 14. Optional phone number + SMS notifications
+## 14. Phone numbers + SMS notifications (wired up)
 
-Onboarding (`/onboarding`) now has an **optional** phone number field plus an
-SMS opt-in checkbox. The phone field is fully optional — users can leave it
-blank and continue. The opt-in checkbox is disabled until a valid phone is
-entered. At save time the value is normalized to E.164 (`+15555550123`) and
-written to `users/<uid>.phoneNumber` and `users/<uid>.smsNotificationsEnabled`.
+Onboarding (`/onboarding`) has an **optional** phone number field plus an
+SMS opt-in checkbox. Phone input is US-only and uses a masked input
+(`(555) 555-5555` on screen; stored in E.164 as `+15555555555`). The opt-in
+checkbox is disabled until a valid phone is entered. At save time the
+value is written to `users/<uid>.phoneNumber` and
+`users/<uid>.smsNotificationsEnabled`.
 
-Nothing currently *sends* SMS — the data is just being captured. To wire it
-up later, the easiest path is Twilio:
+The backend **does** send SMS now — `functions/src/sms.ts` wraps Twilio
+and is invoked alongside email in three places:
 
-1. Create a Twilio account, buy a US long-code or short-code number.
-2. Add to your Firebase Functions environment:
+- `onTripCreated` → match notifications to both riders.
+- `pairMatchNoon` / `pairMatchHourly` → match, no-match, and XL-suggestion
+  notifications.
 
+Opt-in is enforced inside `functions/src/sms.ts`. Every send call:
+1. Loads the recipient's `/users/{uid}` doc.
+2. Aborts silently if `smsNotificationsEnabled !== true`.
+3. Aborts silently if `phoneNumber` fails E.164 validation.
+4. Aborts silently if `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` /
+   `TWILIO_FROM_NUMBER` are unset.
+
+So the feature is safe to deploy before you've purchased a Twilio number —
+it just becomes a no-op until you set the three secrets above.
+
+### Setup
+
+1. Create a Twilio account, buy a US long-code number ($1/mo), and submit
+   an A2P 10DLC campaign registration (required for US carrier delivery).
+2. Set the three secrets (see section 7):
    ```
    firebase functions:secrets:set TWILIO_ACCOUNT_SID
    firebase functions:secrets:set TWILIO_AUTH_TOKEN
    firebase functions:secrets:set TWILIO_FROM_NUMBER
    ```
-3. In `functions/src/email.ts` (or a new `sms.ts`), add a helper:
+3. Redeploy functions: `cd functions && npm install && npm run deploy`.
 
-   ```ts
-   import twilio from 'twilio';
-   const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
-   export async function sendSms(to: string, body: string) {
-     await client.messages.create({ to, from: process.env.TWILIO_FROM_NUMBER!, body });
-   }
-   ```
-4. In `sendMatchNotification()` (or wherever a match is finalized), check
-   `user.smsNotificationsEnabled && user.phoneNumber` and call `sendSms()`.
+### Compliance notes
+
+- Every outbound SMS body ends with `Reply STOP to opt out.` (Twilio
+  automatically enforces STOP/HELP keywords on registered numbers).
+- No marketing content is sent — transactional match / no-match /
+  luggage-warning messages only. This matters for 10DLC campaign approval.
+- Recipients are always verified opt-in: the database flag
+  `smsNotificationsEnabled` only becomes `true` after the user checks the
+  opt-in box at onboarding (and provides a phone number).
+
+### Cost expectations
 
 Twilio at this volume is essentially free: ~$0.0079 per SMS in the US, so
 1,000 match SMSes/month ≈ $8 plus the ~$1/mo number rental.
@@ -522,6 +560,7 @@ The underlying route is `POST /api/dev/impersonate` with body
 
 
 ### 15d. Scenario presets
+
 
 For end-to-end testing of specific matcher behaviors (group of 4, gender
 incompatibility, XL bag overflow, relaxed-campus fallback, etc.) the repo
