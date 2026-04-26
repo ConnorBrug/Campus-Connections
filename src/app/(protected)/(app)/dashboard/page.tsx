@@ -138,24 +138,13 @@ export default function DashboardPage() {
         <div className={cn('grid gap-8', hasTrip ? 'lg:grid-cols-12' : '')}>
           {/* Left/Main column */}
           <div className={cn(hasTrip ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12')}>
-            <div className={cn(hasTrip && 'grid')}>
-              <Card className={cn('w-full shadow-lg', hasTrip && 'h-full')}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-2xl">
-                    {/* Icon is in the form itself; keep header clean */}
-                    Find Your Ride
-                  </CardTitle>
-                  <CardDescription>Enter your flight and bag details to find matches.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TripDetailsForm
-                    userId={currentUser.id}
-                    userUniversity={currentUser.university || undefined}
-                    isTripPending={!!activeTrip}
-                  />
-                  <CostEstimator />
-                </CardContent>
-              </Card>
+            <div className="space-y-6">
+              <TripDetailsForm
+                userId={currentUser.id}
+                userUniversity={currentUser.university || undefined}
+                isTripPending={!!activeTrip}
+              />
+              <CostEstimator />
             </div>
           </div>
 

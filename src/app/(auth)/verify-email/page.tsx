@@ -139,7 +139,7 @@ export default function VerifyEmailPage() {
             Wrong email?{' '}
             <button
               type="button"
-              className="font-medium text-primary hover:underline"
+              className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70"
               onClick={async () => {
                 await logout();
                 router.replace('/signup');

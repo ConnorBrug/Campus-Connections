@@ -49,7 +49,7 @@ export default function HomePage() {
             <Button
               size="sm"
               asChild
-              className="bg-white text-primary hover:bg-white/90"
+              className="bg-white text-foreground font-semibold hover:bg-white/90"
             >
               <Link href="/signup">Sign Up</Link>
             </Button>
@@ -161,7 +161,7 @@ export default function HomePage() {
               </p>
             </div>
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-4xl mx-auto">
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <PiggyBank
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -173,7 +173,7 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <ShieldCheck
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -186,7 +186,7 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <Handshake
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -199,7 +199,7 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <Clock
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -211,7 +211,7 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <CheckCircle
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -223,7 +223,7 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/40">
+              <div className="flex items-start gap-4 p-4 rounded-lg bg-card/80 border shadow-sm">
                 <GraduationCap
                   className="h-10 w-10 text-primary flex-shrink-0 mt-1"
                   aria-hidden="true"
@@ -248,7 +248,7 @@ export default function HomePage() {
             <p className="text-primary-foreground/80 max-w-xl mx-auto mb-8">
               Sign up in 30 seconds with your school account. No credit card, no catch.
             </p>
-            <Button size="lg" asChild className="bg-white text-primary hover:bg-white/90">
+            <Button size="lg" asChild className="bg-white text-foreground font-semibold hover:bg-white/90">
               <Link href="/signup" className="inline-flex items-center gap-2">
                 Sign up free
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />

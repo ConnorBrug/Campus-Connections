@@ -118,7 +118,7 @@ export default function LoginClient() {
       <CardFooter className="flex flex-col items-center pt-4">
         <p className="text-sm text-muted-foreground">
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="font-medium text-primary hover:underline" prefetch={false}>
+          <Link href="/signup" className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70" prefetch={false}>
             Sign up
           </Link>
         </p>

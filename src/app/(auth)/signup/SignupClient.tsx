@@ -104,16 +104,16 @@ export default function SignupClient() {
 
         <p className="mt-4 text-[11px] text-muted-foreground text-center leading-relaxed">
           By continuing you agree to our{' '}
-          <Link href="/terms-of-service" className="underline hover:text-primary" target="_blank">Terms of Service</Link>
+          <Link href="/terms-of-service" className="underline underline-offset-2 hover:text-foreground" target="_blank">Terms of Service</Link>
           {' '}&{' '}
-          <Link href="/privacy-policy" className="underline hover:text-primary" target="_blank">Privacy Policy</Link>.
+          <Link href="/privacy-policy" className="underline underline-offset-2 hover:text-foreground" target="_blank">Privacy Policy</Link>.
         </p>
       </CardContent>
 
       <CardFooter className="flex flex-col items-center pt-2">
         <p className="text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline" prefetch={false}>
+          <Link href="/login" className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70" prefetch={false}>
             Log in
           </Link>
         </p>

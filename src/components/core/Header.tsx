@@ -27,7 +27,8 @@ export function Header() {
       aria-label="Campus Connections home"
     >
       <CarFront className="h-8 w-8 text-primary-foreground" aria-hidden="true" />
-      <span className="font-headline">Connections</span>
+      <span className="font-headline hidden sm:inline">Campus Connections</span>
+      <span className="font-headline sm:hidden">Connections</span>
     </Link>
   );
 

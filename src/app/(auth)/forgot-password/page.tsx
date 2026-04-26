@@ -120,7 +120,7 @@ export default function ForgotPasswordPage() {
           </Button>
           <p className="text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
+            <Link href="/signup" className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/70">
               Sign up
             </Link>
           </p>
