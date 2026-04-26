@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { loginWithGoogle } from "@/lib/auth";
+import { loginWithGoogle, loginWithMicrosoft } from "@/lib/auth";
 import { useState, type SVGProps } from "react";
 import { CarFront, AlertTriangle, Loader2 } from "lucide-react";
 import { profileIsIncomplete } from '@/lib/types';
@@ -17,12 +17,24 @@ function GoogleIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function MicrosoftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 21 21" aria-hidden="true" {...props}>
+      <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+    </svg>
+  );
+}
+
 export default function SignupClient() {
   const router = useRouter();
   // Inline-only OAuth spinner - never lock the whole page, since Firebase's
   // popup-closed detection can take up to a minute to fire if the user X's
   // the Google window mid-flow.
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [isMicrosoftSubmitting, setIsMicrosoftSubmitting] = useState(false);
   const [pageError, setPageError] = useState<React.ReactNode | null>(null);
 
   const handleGoogle = async () => {
@@ -48,6 +60,28 @@ export default function SignupClient() {
       }
       setPageError(e instanceof Error ? e.message : 'Google sign-up failed.');
       setIsGoogleSubmitting(false);
+    }
+  };
+
+  const handleMicrosoft = async () => {
+    if (isMicrosoftSubmitting) return;
+    setIsMicrosoftSubmitting(true);
+    setPageError(null);
+    try {
+      const { profile, isNew } = await loginWithMicrosoft();
+      if (isNew || profileIsIncomplete(profile)) {
+        router.replace('/onboarding?next=' + encodeURIComponent('/main'));
+      } else {
+        router.replace('/main');
+      }
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setIsMicrosoftSubmitting(false);
+        return;
+      }
+      setPageError(e instanceof Error ? e.message : 'Microsoft sign-up failed.');
+      setIsMicrosoftSubmitting(false);
     }
   };
 
@@ -91,6 +125,21 @@ export default function SignupClient() {
               <GoogleIcon className="mr-2 h-5 w-5" />
             )}
             {isGoogleSubmitting ? 'Opening Google...' : 'Continue with Google'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11"
+            onClick={handleMicrosoft}
+            disabled={isMicrosoftSubmitting}
+            aria-busy={isMicrosoftSubmitting}
+          >
+            {isMicrosoftSubmitting ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <MicrosoftIcon className="mr-2 h-5 w-5" />
+            )}
+            {isMicrosoftSubmitting ? 'Opening Microsoft...' : 'Continue with Microsoft'}
           </Button>
         </div>
 

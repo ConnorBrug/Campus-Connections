@@ -16,6 +16,7 @@ import {
   sendEmailVerification,
   signInWithPopup,
   GoogleAuthProvider,
+  OAuthProvider,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { emailToUniversityName } from './universities';
@@ -198,19 +199,25 @@ export async function logoutAndRedirectClientSide(): Promise<void> {
 
 /* ---------------------------- OAuth sign-in ------------------------------ */
 
-type OAuthProviderName = 'google';
+type OAuthProviderName = 'google' | 'microsoft';
 
 /**
- * Google OAuth sign-in. Enforces a verified school email (or whitelist) and
- * infers the university from the email domain.
+ * OAuth sign-in (Google or Microsoft). Enforces a verified school email
+ * (or whitelist) and infers the university from the email domain.
  */
 async function loginWithOAuth(
   providerName: OAuthProviderName,
 ): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
   await setPersistence(auth, browserLocalPersistence);
 
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
+  let provider: GoogleAuthProvider | OAuthProvider;
+  if (providerName === 'microsoft') {
+    provider = new OAuthProvider('microsoft.com');
+    provider.setCustomParameters({ prompt: 'select_account', tenant: 'organizations' });
+  } else {
+    provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+  }
 
   const result = await signInWithPopup(auth, provider);
   const user = result.user;
@@ -275,6 +282,7 @@ async function loginWithOAuth(
 }
 
 export const loginWithGoogle = () => loginWithOAuth('google');
+export const loginWithMicrosoft = () => loginWithOAuth('microsoft');
 
 /* ----------------------------- current user ----------------------------- */
 
