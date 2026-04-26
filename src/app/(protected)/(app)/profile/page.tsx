@@ -279,68 +279,46 @@ export default function ProfilePage() {
 
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8">
-      <div className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-8">
-          <Card className="shadow-lg">
-            <CardHeader className="items-center text-center p-6">
-              <Avatar className="h-28 w-28 border-4 border-primary shadow-md">
-                <AvatarImage src={photoPreview || undefined} alt={user.name || ''} />
-                <AvatarFallback className="text-4xl">
-                  {getInitials(user.name || undefined)}
-                </AvatarFallback>
-              </Avatar>
-              <CardTitle className="text-2xl mt-4 font-headline">{user.name}</CardTitle>
-              <CardDescription className="text-muted-foreground">
-                {user.university} - Class of {user.graduationYear}
-              </CardDescription>
-            </CardHeader>
-          </Card>
+      <div className="container mx-auto max-w-2xl space-y-6">
+        {/* Profile header */}
+        <div className="flex items-center gap-4">
+          <Avatar className="h-16 w-16 border-2 border-primary">
+            <AvatarImage src={photoPreview || undefined} alt={user.name || ''} />
+            <AvatarFallback className="text-xl">{getInitials(user.name || undefined)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <h1 className="text-xl font-bold font-headline">{user.name}</h1>
+            <p className="text-sm text-muted-foreground">{user.university} &middot; Class of {user.graduationYear}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
+          </div>
         </div>
 
-        <div className="lg:col-span-2 space-y-8">
-          <Card className="shadow-lg">
-            <CardContent className="p-6">
-              <Form {...profileForm}>
-                <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-6">
-                  <div>
-                    <div>
-                      <h3 className="text-xl font-headline flex items-center gap-2">
-                        <User className="h-5 w-5 text-primary" /> Edit Profile
-                      </h3>
-                      <p className="text-muted-foreground text-sm mt-1">Keep your information up to date.</p>
-                    </div>
+        <Card className="shadow-lg">
+          <CardContent className="p-5">
+            <Form {...profileForm}>
+              <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-4">
+                <h2 className="text-lg font-semibold font-headline">Edit Profile</h2>
 
-                    <div className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <p className="text-sm text-foreground/90">{user.email}</p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>University</Label>
-                        <Input value={user.university ?? ''} readOnly disabled aria-readonly="true" className="bg-muted/50 pointer-events-none" />
-                      </div>
-
-                      <FormField
-                        control={profileForm.control}
-                        name="photo"
-                        render={() => (
-                          <FormItem>
-                            <FormLabel>Profile Photo</FormLabel>
-                            <FormControl>
-                              <input
-                                id="photo"
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                className="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                                onChange={handleFileChange}
-                              />
-                            </FormControl>
-                            <FormDescription>Accepted: JPG, PNG, WEBP. Max 5MB.</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                <div className="space-y-4">
+                  <FormField
+                    control={profileForm.control}
+                    name="photo"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Photo</FormLabel>
+                        <FormControl>
+                          <input
+                            id="photo"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                            onChange={handleFileChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <FormField name="firstName" control={profileForm.control} render={({ field }) => (
@@ -359,98 +337,83 @@ export default function ProfilePage() {
                         )}/>
                       </div>
 
-                      {isBC && (
-                        <FormField
-                          control={profileForm.control}
-                          name="campusArea"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Boston College Campus Area</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value || ''}>
-                                <FormControl>
-                                  <SelectTrigger id="campusArea">
-                                    <SelectValue placeholder="Select BC Campus Area" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="2k">2k</SelectItem>
-                                  <SelectItem value="Newton">Newton</SelectItem>
-                                  <SelectItem value="CoRo/Upper">CoRo/Upper (College Road/Upper)</SelectItem>
-                                  <SelectItem value="Lower">Lower</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                  {isBC && (
+                    <FormField
+                      control={profileForm.control}
+                      name="campusArea"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Campus Area</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                            <FormControl>
+                              <SelectTrigger><SelectValue placeholder="Select area" /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="2k">2k</SelectItem>
+                              <SelectItem value="Newton">Newton</SelectItem>
+                              <SelectItem value="CoRo/Upper">CoRo/Upper</SelectItem>
+                              <SelectItem value="Lower">Lower</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
                       )}
+                    />
+                  )}
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <FormField
-                          control={profileForm.control}
-                          name="gender"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Gender</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl>
-                                  <SelectTrigger id="gender">
-                                    <SelectValue placeholder="Select gender" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="Male">Male</SelectItem>
-                                  <SelectItem value="Female">Female</SelectItem>
-                                  <SelectItem value="Other">Other</SelectItem>
-                                  <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={profileForm.control}
-                          name="graduationYear"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Class of...</FormLabel>
-                              <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl>
-                                  <SelectTrigger><SelectValue placeholder="Select Year" /></SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {validYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={profileForm.control}
+                      name="gender"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Gender</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Male">Male</SelectItem>
+                              <SelectItem value="Female">Female</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                              <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={profileForm.control}
+                      name="graduationYear"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Class of</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {validYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
                   </div>
+                </div>
 
-                  <Button type="submit" disabled={profileForm.formState.isSubmitting}>
-                    <Save className="mr-2 h-4 w-4" />
-                    {profileForm.formState.isSubmitting ? 'Saving…' : 'Save Changes'}
-                  </Button>
-                </form>
-              </Form>
+                <Button type="submit" className="w-full" disabled={profileForm.formState.isSubmitting}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {profileForm.formState.isSubmitting ? 'Saving…' : 'Save Changes'}
+                </Button>
+              </form>
+            </Form>
 
-              <Separator className="my-8" />
+            <Separator className="my-6" />
 
-              {hasPasswordProvider ? (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-xl font-headline flex items-center gap-2">
-                      <KeyRound className="h-5 w-5 text-primary" /> Change Password
-                    </h3>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      For your security, you may be asked to reauthenticate.
-                    </p>
-                  </div>
+            {hasPasswordProvider ? (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold font-headline">Change Password</h2>
 
                   <form onSubmit={passwordForm.handleSubmit(async (vals) => handlePasswordSubmit(vals))} className="space-y-4">
                     <div className="space-y-2">
@@ -528,51 +491,46 @@ export default function ProfilePage() {
                     </Button>
                   </form>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <h3 className="text-xl font-headline flex items-center gap-2">
-                    <KeyRound className="h-5 w-5 text-primary" /> Change Password
-                  </h3>
-                  <p className="text-muted-foreground text-sm">
-                    Your account is linked to Google. Password management is handled through your Google account settings.
-                  </p>
-                </div>
-              )}
-
-              <Separator className="my-8" />
-
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-xl font-headline flex items-center gap-2 text-destructive">
-                    <Trash2 className="h-5 w-5" /> Delete Account
-                  </h3>
-                  <p className="text-muted-foreground text-sm mt-1">Permanently delete your account and all associated data.</p>
-                </div>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" disabled={isDeleting}>
-                      {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting…</> : 'Delete My Account'}
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete your account and related data.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive hover:bg-destructive/90">
-                        Yes, delete my account
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+            ) : (
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold font-headline">Password</h2>
+                <p className="text-sm text-muted-foreground">
+                  Linked to Google. Manage via your Google account.
+                </p>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            )}
+
+            <Separator className="my-6" />
+
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold font-headline text-destructive">Delete Account</h2>
+                <p className="text-xs text-muted-foreground">Permanent and irreversible.</p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={isDeleting}>
+                    {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting…</> : 'Delete'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete your account and all data.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive hover:bg-destructive/90">
+                      Delete my account
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -222,49 +222,28 @@ export default function PlannedTripsPage() {
 
   const renderPendingTrip = (trip: TripRequest) => (
     <>
-      <CardTitle className="text-3xl font-headline">Your Pending Trip</CardTitle>
-      <CardDescription className="text-center text-lg">
-        Here are the details for your trip. We&apos;re actively searching for a match.
-      </CardDescription>
-      <div className="space-y-2 text-sm text-foreground/80 p-4 border rounded-md bg-muted/30 shadow-inner">
+      <CardTitle className="text-2xl font-headline">Pending Trip</CardTitle>
+      <div className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-full px-3 py-1 mx-auto">
+        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+        Looking for a match
+      </div>
+      <div className="space-y-1.5 text-sm p-4 border rounded-md bg-muted/30">
         {trip.flightCode && (
-          <p className="flex items-center gap-2">
-            <Plane className="h-4 w-4 text-primary" /> <strong>Flight Code:</strong> {trip.flightCode}
-          </p>
+          <p><strong>Flight:</strong> {trip.flightCode}</p>
         )}
         {trip.flightDate && (
-          <p className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-primary" /> <strong>Date:</strong> {fmtYmdDate(trip.flightDate)}
-          </p>
+          <p><strong>Date:</strong> {fmtYmdDate(trip.flightDate)}</p>
         )}
         {(trip.flightTime || trip.flightDateTime) && (
-          <p className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" /> <strong>Boarding Time:</strong>{' '}
-            {trip.flightDateTime ? fmtIsoTime(trip.flightDateTime) : (trip.flightTime ?? 'Not available')}
+          <p><strong>Boarding:</strong>{' '}
+            {trip.flightDateTime ? fmtIsoTime(trip.flightDateTime) : (trip.flightTime ?? '—')}
           </p>
         )}
         {trip.departingAirport && (
-          <p className="flex items-center gap-2">
-            <Plane className="h-4 w-4 text-primary" /> <strong>Departing Airport:</strong> {trip.departingAirport}
-          </p>
+          <p><strong>Airport:</strong> {trip.departingAirport}</p>
         )}
-        {currentUser.university && (
-          <p className="flex items-center gap-2">
-            <Building className="h-4 w-4 text-primary" /> <strong>University:</strong> {currentUser.university}
-          </p>
-        )}
-        <p className="flex items-center gap-2">
-          <Backpack className="h-4 w-4 text-primary" /> <strong>Carry-on Bags:</strong> {trip.numberOfCarryons}
-        </p>
-        <p className="flex items-center gap-2">
-          <Luggage className="h-4 w-4 text-primary" /> <strong>Checked Bags:</strong> {trip.numberOfCheckedBags}
-        </p>
+        <p><strong>Bags:</strong> {trip.numberOfCarryons} carry-on, {trip.numberOfCheckedBags} checked</p>
       </div>
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertTitle>Next Steps</AlertTitle>
-        <AlertDescription>We will notify you on your dashboard when a match is found.</AlertDescription>
-      </Alert>
     </>
   );
 

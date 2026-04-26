@@ -107,13 +107,9 @@ export default function LoginClient() {
           </Button>
         </div>
 
-        <div className="mt-6 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground mb-1">School accounts only</p>
-          <p>
-            Sign in with your university Google account (e.g. @bc.edu, @vanderbilt.edu).
-            Your school is detected automatically from your email - no manual verification needed.
-          </p>
-        </div>
+        <p className="mt-4 text-xs text-muted-foreground text-center">
+          Use your university Google account (e.g. @bc.edu).
+        </p>
       </CardContent>
       <CardFooter className="flex flex-col items-center pt-4">
         <p className="text-sm text-muted-foreground">

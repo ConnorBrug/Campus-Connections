@@ -8,28 +8,11 @@ import { getActiveTripForUser } from '@/lib/auth';
 import type { TripRequest } from '@/lib/types';
 import { useApp } from '@/components/providers/AppClientProvider';
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 
-import { Loader2, Plane, MessageSquare, User, Building, Mail, GraduationCap, VenetianMask } from 'lucide-react';
-
-type InfoRowProps = {
-  icon: React.ElementType;
-  label: string;
-  value?: string | null | undefined;
-};
-
-const InfoRow: React.FC<InfoRowProps> = ({ icon: Icon, label, value }) => (
-  <div className="flex items-center gap-4 text-sm">
-    <div className="flex items-center gap-2 w-28 text-muted-foreground">
-      <Icon className="h-4 w-4" />
-      <span>{label}</span>
-    </div>
-    <span className="font-medium text-foreground/90">{value ?? 'N/A'}</span>
-  </div>
-);
+import { Loader2, Plane, MessageSquare, ArrowRight } from 'lucide-react';
 
 export default function MainPage() {
   const router = useRouter();
@@ -39,143 +22,98 @@ export default function MainPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    const fetchData = async () => {
+    if (!user) { router.push('/login'); return; }
+    (async () => {
       setIsLoading(true);
-      try {
-        const trip = await getActiveTripForUser(user.id);
-        setActiveTrip(trip);
-      } catch {
-        // Trip fetch failed — show empty state
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
+      try { setActiveTrip(await getActiveTripForUser(user.id)); }
+      catch { /* show empty state */ }
+      finally { setIsLoading(false); }
+    })();
   }, [user, router]);
 
-  const getInitials = (name?: string | null) => {
-    if (!name) return 'U';
-    return name
-      .split(' ')
-      .filter(Boolean)
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase();
-  };
+  const initials = (name?: string | null) =>
+    name ? name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase() : 'U';
 
-  // Header in protected layout is in-flow and h-16 (4rem).
-  // Use viewport minus header height, then nudge up by 2rem like auth pages.
   if (!user || isLoading) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
-        <div className="flex items-center gap-3 text-lg text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p>Loading your details...</p>
-        </div>
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
 
-  const showMatchedCTA = activeTrip?.status === 'matched' && !!activeTrip?.matchId;
-
-  const safeEmail = user.email ?? undefined;
-  const safeUniversity = user.university ?? undefined;
-  const safeCampusArea = user.campusArea ?? undefined;
-  const safeGender = user.gender ?? undefined;
-  const safeGraduationYear = user.graduationYear ? `Class of ${user.graduationYear}` : undefined;
+  const firstName = user.name?.split(' ')?.[0] ?? 'there';
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 md:p-6 -mt-8">
-      <Card className="w-full max-w-3xl mx-auto shadow-xl">
-        <CardHeader className="text-center bg-muted/30 p-6 border-b">
-          <div className="flex justify-center mb-4">
-            <Avatar className="h-24 w-24 border-4 border-primary shadow-lg">
-              <AvatarImage src={user.photoUrl ?? undefined} alt={user.name ?? 'User avatar'} />
-              <AvatarFallback className="text-3xl">{getInitials(user.name)}</AvatarFallback>
+      <div className="w-full max-w-md space-y-4">
+        {/* Welcome header */}
+        <Card>
+          <CardContent className="pt-6 pb-5 text-center">
+            <Avatar className="h-16 w-16 mx-auto border-2 border-primary mb-3">
+              <AvatarImage src={user.photoUrl ?? undefined} alt={user.name ?? ''} />
+              <AvatarFallback className="text-xl">{initials(user.name)}</AvatarFallback>
             </Avatar>
-          </div>
-          <CardTitle className="text-3xl md:text-4xl font-headline tracking-tight">
-            Welcome, {user.name?.split(' ')?.[0] ?? 'there'}!
-          </CardTitle>
-        </CardHeader>
+            <h1 className="text-2xl font-bold font-headline">Hey, {firstName}</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {user.university}{user.graduationYear ? ` \u2022 Class of ${user.graduationYear}` : ''}
+            </p>
+          </CardContent>
+        </Card>
 
-        <CardContent className="p-6 space-y-8">
-          <Card className="bg-background/80 shadow-inner">
-            <CardHeader>
-              <CardTitle className="text-xl font-headline flex items-center gap-2">
-                <Plane className="h-5 w-5 text-primary" />
-                Your Trip Status
-              </CardTitle>
-              <CardDescription>
-                {activeTrip
-                  ? activeTrip.status === 'matched'
-                    ? 'You have a matched trip! Time to coordinate.'
-                    : "We're searching for a match for your pending trip."
-                  : 'Plan a trip to get started.'}
-              </CardDescription>
-            </CardHeader>
-
-            <CardContent>
-              {activeTrip ? (
-                activeTrip.status === 'matched' ? (
-                  showMatchedCTA ? (
-                    <Button asChild size="lg">
-                      <Link href={`/chat/${activeTrip.matchId!}`}>
-                        <MessageSquare className="mr-2 h-5 w-5" />
-                        Chat with Your Match
-                      </Link>
-                    </Button>
-                  ) : (
-                    <p className="text-muted-foreground">
-                      Your trip is matched, but a chat link isn’t available yet.
-                    </p>
-                  )
-                ) : (
-                  <>
-                    <p className="text-muted-foreground mb-4">
-                      We&apos;re searching for a match for your pending trip.
-                    </p>
-                    <Button asChild variant="outline">
-                      <Link href="/planned-trips">View Trip Details</Link>
-                    </Button>
-                  </>
-                )
-              ) : (
-                <div className="flex flex-col items-center text-center py-8 px-4 rounded-lg border border-dashed bg-muted/20">
-                  <div className="bg-primary/10 p-4 rounded-full mb-4" aria-hidden="true">
-                    <Plane className="h-8 w-8 text-primary" />
+        {/* Trip status */}
+        <Card>
+          <CardContent className="pt-5 pb-5">
+            {activeTrip ? (
+              activeTrip.status === 'matched' && activeTrip.matchId ? (
+                <div className="text-center space-y-3">
+                  <div className="inline-flex items-center gap-2 text-sm font-medium text-green-700 bg-green-50 rounded-full px-3 py-1">
+                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                    Matched
                   </div>
-                  <h3 className="text-lg font-semibold mb-1">No trips planned yet</h3>
-                  <p className="text-muted-foreground max-w-sm mb-4">
-                    Post your next airport trip and we&apos;ll connect you with a verified student headed the same way.
-                  </p>
-                  <Button asChild size="lg">
-                    <Link href="/dashboard">Post a Trip</Link>
+                  <p className="text-sm text-muted-foreground">You have a match — time to coordinate!</p>
+                  <Button asChild className="w-full">
+                    <Link href={`/chat/${activeTrip.matchId}`}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> Open Chat
+                    </Link>
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              ) : (
+                <div className="text-center space-y-3">
+                  <div className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 bg-amber-50 rounded-full px-3 py-1">
+                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                    Looking for a match
+                  </div>
+                  <p className="text-sm text-muted-foreground">We&apos;ll notify you when someone matches.</p>
+                  <Button asChild variant="outline" size="sm" className="w-full">
+                    <Link href="/planned-trips">View Trip Details</Link>
+                  </Button>
+                </div>
+              )
+            ) : (
+              <div className="text-center space-y-3">
+                <Plane className="h-8 w-8 text-primary mx-auto" />
+                <p className="text-sm text-muted-foreground">No trips planned yet.</p>
+                <Button asChild className="w-full">
+                  <Link href="/dashboard">
+                    Post a Trip <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          <Separator />
-
-          <div>
-            <CardTitle className="text-xl font-headline mb-4">Your Profile Details</CardTitle>
-            <div className="space-y-3">
-              <InfoRow icon={User} label="Full Name" value={user.name ?? undefined} />
-              <InfoRow icon={Mail} label="Email" value={safeEmail} />
-              <InfoRow icon={Building} label="University" value={safeUniversity} />
-              {safeCampusArea && <InfoRow icon={Building} label="Campus Area" value={safeCampusArea} />}
-              <InfoRow icon={VenetianMask} label="Gender" value={safeGender} />
-              <InfoRow icon={GraduationCap} label="Class" value={safeGraduationYear} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Quick links */}
+        <div className="grid grid-cols-2 gap-3">
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/profile">Edit Profile</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="w-full">
+            <Link href="/planned-trips">My Trips</Link>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

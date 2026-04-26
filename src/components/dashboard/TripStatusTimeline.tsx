@@ -1,4 +1,3 @@
-
 'use client';
 
 import { CheckCircle, Search, MessageSquare } from 'lucide-react';
@@ -9,25 +8,6 @@ interface TripStatusTimelineProps {
   status: TripRequest['status'];
 }
 
-const TimelineStep = ({ icon: Icon, title, description, isCompleted, isActive }: { icon: React.ElementType, title: string, description: string, isCompleted: boolean, isActive: boolean }) => {
-  return (
-    <div className="flex items-start gap-4">
-      <div className={cn(
-        "relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2",
-        isCompleted ? "bg-primary border-primary text-primary-foreground" : "",
-        isActive ? "bg-primary/20 border-primary text-primary animate-pulse" : "",
-        !isCompleted && !isActive ? "bg-muted border-border text-muted-foreground" : ""
-      )}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <h4 className={cn("font-semibold", isCompleted || isActive ? "text-foreground" : "text-muted-foreground")}>{title}</h4>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-};
-
 export function TripStatusTimeline({ status }: TripStatusTimelineProps) {
   const isPending = status === 'pending';
   const isMatched = status === 'matched';
@@ -36,38 +16,64 @@ export function TripStatusTimeline({ status }: TripStatusTimelineProps) {
   const steps = [
     {
       icon: CheckCircle,
-      title: 'Trip Submitted',
-      description: 'We have your trip details.',
-      isCompleted: true, // Always completed if there's an active trip
-      isActive: false,
+      label: 'Submitted',
+      done: true,
+      active: false,
     },
     {
       icon: Search,
-      title: 'Matching In Progress',
-      description: 'We are looking for a match for you.',
-      isCompleted: isMatched || isCompleted,
-      isActive: isPending,
+      label: 'Matching',
+      done: isMatched || isCompleted,
+      active: isPending,
     },
     {
       icon: MessageSquare,
-      title: 'Chat With Match',
-      description: 'Coordinate your ride details.',
-      isCompleted: isMatched || isCompleted,
-      isActive: false, // This step is either done or not, not "active"
+      label: 'Matched',
+      done: isMatched || isCompleted,
+      active: false,
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="relative space-y-8 pl-4">
-          {/* Vertical line - left-9 (2.25rem) centers on the 2.5rem circles
-              after the container's pl-4 (1rem) offset; -translate-x-1/2 then
-              bisects the 0.5 line itself. Avoids magic left-[24px] pixel. */}
-          <div className="absolute left-9 top-4 h-[calc(100%-2rem)] w-0.5 bg-border -translate-x-1/2"></div>
-          {steps.map((step, index) => (
-            <TimelineStep key={index} {...step} />
-          ))}
-      </div>
+    <div className="flex items-center justify-between gap-0">
+      {steps.map((step, i) => {
+        const Icon = step.icon;
+        return (
+          <div key={i} className="flex items-center flex-1 last:flex-none">
+            {/* Step circle + label */}
+            <div className="flex flex-col items-center gap-1.5">
+              <div
+                className={cn(
+                  'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-colors',
+                  step.done && 'bg-primary border-primary text-primary-foreground',
+                  step.active && 'bg-primary/20 border-primary text-primary animate-pulse',
+                  !step.done && !step.active && 'bg-muted border-border text-muted-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+              </div>
+              <span
+                className={cn(
+                  'text-[11px] font-medium leading-tight text-center',
+                  step.done || step.active ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+
+            {/* Connector line (not after the last step) */}
+            {i < steps.length - 1 && (
+              <div
+                className={cn(
+                  'h-0.5 flex-1 mx-2 mt-[-1.25rem]',
+                  steps[i + 1].done || steps[i + 1].active ? 'bg-primary' : 'bg-border',
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

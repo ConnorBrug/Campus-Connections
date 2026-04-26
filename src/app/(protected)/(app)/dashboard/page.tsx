@@ -102,7 +102,7 @@ export default function DashboardPage() {
           hasTrip ? 'container max-w-7xl' : 'container max-w-3xl'
         )}
       >
-        <h1 className="text-4xl font-bold mb-8 text-center font-headline">Your Airport Ride Share</h1>
+        <h1 className="text-3xl font-bold mb-6 text-center font-headline">Find Your Ride</h1>
 
         {activeTrip?.cancellationAlert && (
           <Alert className="mb-6 shadow-md border-orange-500 bg-orange-500/10">
@@ -152,19 +152,20 @@ export default function DashboardPage() {
           {hasTrip && (
             <div className="lg:col-span-4 xl:col-span-3">
               <Card className="shadow-lg">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-2xl">
-                    <Plane className="h-6 w-6 text-primary" />
-                    Your Trip Status
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <Plane className="h-5 w-5 text-primary" />
+                    Trip Status
                   </CardTitle>
-                  <CardDescription>
-                    {activeTrip!.status === 'pending' && "We're looking for a match. You'll be notified when one is found."}
-                    {activeTrip!.status === 'matched' && "You're matched! Coordinate with your partner."}
-                    {activeTrip!.status === 'completed' && 'This trip is complete.'}
-                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-5">
                   <TripStatusTimeline status={activeTrip!.status} />
+
+                  <p className="text-sm text-muted-foreground text-center">
+                    {activeTrip!.status === 'pending' && "Looking for a match\u2026"}
+                    {activeTrip!.status === 'matched' && "You\u2019re matched!"}
+                    {activeTrip!.status === 'completed' && 'Trip complete.'}
+                  </p>
 
                   {activeTrip!.status === 'matched' && activeTrip!.matchId && (
                     <Button asChild className="w-full">
@@ -174,31 +175,19 @@ export default function DashboardPage() {
                     </Button>
                   )}
 
-                  <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/50 p-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Change of plans?</p>
-                      <p className="text-xs text-muted-foreground">You can cancel your trip request at any time.</p>
-                    </div>
-                    <Button variant="destructive" size="sm" onClick={handleCancelTrip}>
+                  <div className="flex flex-col items-center gap-2 pt-2 border-t">
+                    <Button variant="destructive" size="sm" onClick={handleCancelTrip} className="w-full">
                       <Trash2 className="mr-2 h-4 w-4" /> Cancel Trip
                     </Button>
-                  </div>
 
-                  {activeTrip!.status === 'pending' && (
-                    <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/50 p-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Low-demand period?</p>
-                        <p className="text-xs text-muted-foreground">
-                          During low-demand periods, you can browse manual ride posts and pick a rider directly.
-                        </p>
-                      </div>
-                      <Button asChild size="sm" variant="outline">
+                    {activeTrip!.status === 'pending' && (
+                      <Button asChild size="sm" variant="outline" className="w-full">
                         <Link href="/manual-rides">
-                          <Users className="mr-2 h-4 w-4" /> Ride Posts
+                          <Users className="mr-2 h-4 w-4" /> Browse Ride Posts
                         </Link>
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>

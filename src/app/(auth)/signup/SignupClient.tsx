@@ -94,13 +94,9 @@ export default function SignupClient() {
           </Button>
         </div>
 
-        <div className="mt-6 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground mb-1">Why only school accounts?</p>
-          <p>
-            We restrict sign-ups to verified university emails (e.g. @bc.edu, @vanderbilt.edu).
-            Your school is detected automatically from your email - no manual verification needed.
-          </p>
-        </div>
+        <p className="mt-4 text-xs text-muted-foreground text-center">
+          Sign in with your .edu email (e.g. @bc.edu). Your school is detected automatically.
+        </p>
 
         <p className="mt-4 text-[11px] text-muted-foreground text-center leading-relaxed">
           By continuing you agree to our{' '}

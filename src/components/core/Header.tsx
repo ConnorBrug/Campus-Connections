@@ -23,10 +23,10 @@ export function Header() {
   const Logo = () => (
     <Link
       href="/main"
-      className="flex items-center gap-2 text-2xl font-bold text-primary-foreground"
+      className="flex items-center gap-2 text-xl font-bold text-primary-foreground"
       aria-label="Campus Connections home"
     >
-      <CarFront className="h-8 w-8 text-primary-foreground" aria-hidden="true" />
+      <CarFront className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
       <span className="font-headline hidden sm:inline">Campus Connections</span>
       <span className="font-headline sm:hidden">Connections</span>
     </Link>
@@ -35,7 +35,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-primary shadow-sm">
       {/* Full-width row, no centered container */}
-      <div className="flex h-16 w-full items-center justify-between px-4 md:px-6">
+      <div className="flex h-14 w-full items-center justify-between px-4 md:px-6">
         <Logo />
         <nav aria-label="Primary" className="flex items-center gap-1 sm:gap-2">
           <Button
