@@ -210,7 +210,7 @@ export default function PlannedTripsPage() {
       </div>
       <CardTitle className="text-2xl font-headline">No trips planned</CardTitle>
       <CardDescription className="text-base mt-2 max-w-md">
-        Post your next airport trip and we&apos;ll match you with a verified student headed the same way.
+        Enter your trip details and we&apos;ll match you with a verified student headed the same way.
       </CardDescription>
       <Button asChild size="lg" className="mt-6">
         <Link href="/dashboard">

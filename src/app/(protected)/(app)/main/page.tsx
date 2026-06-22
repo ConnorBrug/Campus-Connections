@@ -96,7 +96,7 @@ export default function MainPage() {
                 <p className="text-sm text-muted-foreground">No trips planned yet.</p>
                 <Button asChild className="w-full">
                   <Link href="/dashboard">
-                    Post a Trip <ArrowRight className="ml-2 h-4 w-4" />
+                    Submit a Trip Request <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               </div>

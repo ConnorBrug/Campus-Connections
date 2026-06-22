@@ -15,6 +15,8 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   OAuthProvider,
   type User as FirebaseUser,
@@ -89,7 +91,7 @@ export interface SignupData {
 export async function signup(userData: SignupData): Promise<FirebaseUser> {
   // Enforce university domain OR whitelist at sign-up
   if (!isAllowedEmail(userData.email)) {
-    throw new Error('Please sign up with a valid university email. (This account is not on the exception list.)');
+    throw new Error('We haven\'t extended Campus Connections to your institution yet, but we hope to soon!');
   }
 
   await setPersistence(auth, browserLocalPersistence);
@@ -155,7 +157,7 @@ export async function login(email: string, passwordInput: string): Promise<{ pro
   // Block non-university logins unless explicitly whitelisted
   if (!isAllowedEmail(user.email ?? '')) {
     await signOut(auth);
-    throw new Error('Please sign in with a valid university email. (This account is not on the exception list.)');
+    throw new Error('We haven\'t extended Campus Connections to your institution yet, but we hope to soon!');
   }
 
   if (user.emailVerified) {
@@ -201,26 +203,19 @@ export async function logoutAndRedirectClientSide(): Promise<void> {
 
 type OAuthProviderName = 'google' | 'microsoft';
 
+/** Simple mobile/tablet detection — popup auth is blocked on most mobile browsers. */
+const isMobile = () =>
+  typeof navigator !== 'undefined' &&
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 /**
- * OAuth sign-in (Google or Microsoft). Enforces a verified school email
- * (or whitelist) and infers the university from the email domain.
+ * Finish processing an OAuth result (shared by popup and redirect flows).
+ * Validates school email, creates/updates Firestore profile, and mints session cookie.
  */
-async function loginWithOAuth(
+async function finalizeOAuthResult(
+  user: FirebaseUser,
   providerName: OAuthProviderName,
 ): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
-  await setPersistence(auth, browserLocalPersistence);
-
-  let provider: GoogleAuthProvider | OAuthProvider;
-  if (providerName === 'microsoft') {
-    provider = new OAuthProvider('microsoft.com');
-    provider.setCustomParameters({ prompt: 'select_account', tenant: 'organizations' });
-  } else {
-    provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-  }
-
-  const result = await signInWithPopup(auth, provider);
-  const user = result.user;
   const email = (user.email ?? '').toLowerCase();
 
   const uni = emailToUniversity(email);
@@ -228,8 +223,7 @@ async function loginWithOAuth(
   if (!uni) {
     await signOut(auth);
     throw new Error(
-      `This app is restricted to school email addresses. ` +
-      `Please sign in with your university account (e.g. @bc.edu, @vanderbilt.edu).`
+      `We haven't extended Campus Connections to your institution yet, but we hope to soon!`
     );
   }
 
@@ -279,6 +273,61 @@ async function loginWithOAuth(
 
   const profile = (await getDoc(userDocRef)).data() as UserProfile;
   return { profile, user, isNew };
+}
+
+function buildProvider(providerName: OAuthProviderName): GoogleAuthProvider | OAuthProvider {
+  if (providerName === 'microsoft') {
+    const p = new OAuthProvider('microsoft.com');
+    p.setCustomParameters({ prompt: 'select_account', tenant: 'organizations' });
+    return p;
+  }
+  const p = new GoogleAuthProvider();
+  p.setCustomParameters({ prompt: 'select_account' });
+  return p;
+}
+
+/**
+ * OAuth sign-in — uses popup on desktop, redirect on mobile (where popups are blocked).
+ * On mobile the page reloads after the redirect; `handleRedirectResult` (below)
+ * picks up the result on the next load.
+ */
+async function loginWithOAuth(
+  providerName: OAuthProviderName,
+): Promise<{ profile: UserProfile; user: FirebaseUser; isNew: boolean }> {
+  await setPersistence(auth, browserLocalPersistence);
+  const provider = buildProvider(providerName);
+
+  if (isMobile()) {
+    // Store which provider we're using so handleRedirectResult knows later
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('oauth_provider', providerName);
+    }
+    await signInWithRedirect(auth, provider);
+    // Page will reload — this promise never resolves
+    return new Promise(() => {});
+  }
+
+  const result = await signInWithPopup(auth, provider);
+  return finalizeOAuthResult(result.user, providerName);
+}
+
+/**
+ * Call on app load to finish a mobile OAuth redirect.
+ * Returns null if there was no pending redirect.
+ */
+export async function handleRedirectResult(): Promise<{
+  profile: UserProfile;
+  user: FirebaseUser;
+  isNew: boolean;
+} | null> {
+  const result = await getRedirectResult(auth);
+  if (!result) return null;
+
+  const providerName: OAuthProviderName =
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('oauth_provider') as OAuthProviderName) || 'google';
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('oauth_provider');
+
+  return finalizeOAuthResult(result.user, providerName);
 }
 
 export const loginWithGoogle = () => loginWithOAuth('google');

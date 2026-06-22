@@ -88,7 +88,7 @@ export default function HomePage() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
-                { icon: Plane, step: "1", title: "Post your trip", desc: "Enter your flight, airport, and bags." },
+                { icon: Plane, step: "1", title: "Enter your trip details", desc: "Enter your flight, airport, and bags." },
                 { icon: Users, step: "2", title: "Get matched", desc: "We pair you with a verified student on the same route." },
                 { icon: CarFront, step: "3", title: "Ride together", desc: "Chat, coordinate pickup, split the fare." },
               ].map((item) => (
@@ -114,7 +114,7 @@ export default function HomePage() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {[
-                { icon: PiggyBank, title: "Under $15/person", desc: "Split the fare 2-4 ways." },
+                { icon: PiggyBank, title: "More affordable rides", desc: "Split the fare 2-4 ways." },
                 { icon: ShieldCheck, title: "Verified .edu only", desc: "Only students from your school." },
                 { icon: Clock, title: "Fast matching", desc: "Most trips match within an hour." },
                 { icon: GraduationCap, title: "Your campus", desc: "Started at BC, expanding every semester." },

@@ -27,8 +27,8 @@ export default function TripSubmittedPage() {
         </CardContent>
         <CardFooter className="flex justify-center bg-muted/50 p-4 border-t">
              <Button asChild size="lg">
-                <Link href="/dashboard">
-                    <CalendarDays className="mr-2 h-5 w-5" /> Return to Dashboard
+                <Link href="/main">
+                    <CalendarDays className="mr-2 h-5 w-5" /> Return to Home
                 </Link>
             </Button>
         </CardFooter>

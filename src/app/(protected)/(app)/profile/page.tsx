@@ -288,7 +288,9 @@ export default function ProfilePage() {
           </Avatar>
           <div>
             <h1 className="text-xl font-bold font-headline">{user.name}</h1>
-            <p className="text-sm text-muted-foreground">{user.university} &middot; Class of {user.graduationYear}</p>
+            <p className="text-sm text-muted-foreground">
+              {user.university}{user.campusArea ? ` • ${user.campusArea}` : ''} &middot; Class of {user.graduationYear}
+            </p>
             <p className="text-xs text-muted-foreground">{user.email}</p>
           </div>
         </div>
