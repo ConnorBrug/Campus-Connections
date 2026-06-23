@@ -16,7 +16,7 @@ function AuthHeader() {
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    <div className="flex min-h-[100svh] w-full flex-col">
       <AuthHeader />
       {/* keep top padding so nothing hides under the absolute header */}
       <main className="flex flex-1 items-center justify-center p-4 pt-16">

@@ -15,7 +15,6 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   signInWithPopup,
-  signInWithRedirect,
   getRedirectResult,
   GoogleAuthProvider,
   OAuthProvider,
@@ -203,11 +202,6 @@ export async function logoutAndRedirectClientSide(): Promise<void> {
 
 type OAuthProviderName = 'google' | 'microsoft';
 
-/** Simple mobile/tablet detection — popup auth is blocked on most mobile browsers. */
-const isMobile = () =>
-  typeof navigator !== 'undefined' &&
-  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
 /**
  * Finish processing an OAuth result (shared by popup and redirect flows).
  * Validates school email, creates/updates Firestore profile, and mints session cookie.
@@ -297,16 +291,11 @@ async function loginWithOAuth(
   await setPersistence(auth, browserLocalPersistence);
   const provider = buildProvider(providerName);
 
-  if (isMobile()) {
-    // Store which provider we're using so handleRedirectResult knows later
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('oauth_provider', providerName);
-    }
-    await signInWithRedirect(auth, provider);
-    // Page will reload — this promise never resolves
-    return new Promise(() => {});
-  }
-
+  // Use a popup on ALL platforms. signInWithRedirect is unreliable on
+  // iOS/Safari: tracking prevention blocks the cross-site storage the redirect
+  // handler needs, so getRedirectResult() returns null and the user is bounced
+  // back to /login with no session cookie. Popups work for user-initiated taps
+  // on modern mobile browsers.
   const result = await signInWithPopup(auth, provider);
   return finalizeOAuthResult(result.user, providerName);
 }

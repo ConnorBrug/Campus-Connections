@@ -36,7 +36,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-[100svh] flex-col">
       <Header />
       <AppClientProvider initialProfile={initialProfile}>
         <main className="flex flex-1 flex-col">{children}</main>
