@@ -36,7 +36,7 @@ export default function MainPage() {
 
   if (!user || isLoading) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+      <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
@@ -45,7 +45,7 @@ export default function MainPage() {
   const firstName = user.name?.split(' ')?.[0] ?? 'there';
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 md:p-6 -mt-8">
+    <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center p-4 md:p-6 -mt-8">
       <div className="w-full max-w-md space-y-4">
         {/* Welcome header */}
         <Card>

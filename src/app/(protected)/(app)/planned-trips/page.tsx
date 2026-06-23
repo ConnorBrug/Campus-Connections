@@ -186,7 +186,7 @@ export default function PlannedTripsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
+      <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center p-4 -mt-8">
         <div className="flex items-center gap-3 text-lg text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p>Loading planned trips...</p>
@@ -197,7 +197,7 @@ export default function PlannedTripsPage() {
 
   if (!currentUser) {
     return (
-      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 -mt-8">
+      <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center p-4 -mt-8">
         <p className="text-lg">Redirecting…</p>
       </div>
     );
@@ -478,7 +478,7 @@ export default function PlannedTripsPage() {
   const showFlagOption = isClient && match && matchedPartner && !activeTrip?.userHasBeenFlagged;
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-4 md:p-6 -mt-8">
+    <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center p-4 md:p-6 -mt-8">
       <div className="w-full max-w-2xl">
         <Card className="shadow-xl">
           <CardHeader className="text-center" />

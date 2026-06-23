@@ -228,7 +228,7 @@ export default function ChatPage() {
   // user can reference what was said, but with a banner + no composer.
   return (
     <div className="flex flex-1 items-center justify-center p-4">
-      <Card className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-3xl flex-col">
+      <Card className="mx-auto flex h-[calc(100svh-8rem)] w-full max-w-3xl flex-col">
         <div className="flex items-center justify-between border-b p-3">
           <Link
             href="/planned-trips"

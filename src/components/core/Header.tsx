@@ -26,7 +26,7 @@ export function Header() {
       className="flex items-center gap-2 text-xl font-bold text-primary-foreground"
       aria-label="Campus Connections home"
     >
-      <CarFront className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
+      <CarFront className="h-6 w-6 shrink-0 text-primary-foreground" aria-hidden="true" />
       <span className="font-headline hidden sm:inline">Campus Connections</span>
       <span className="font-headline sm:hidden">Connections</span>
     </Link>
@@ -34,44 +34,27 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-primary shadow-sm">
-      {/* Full-width row, no centered container */}
-      <div className="flex h-14 w-full items-center justify-between px-4 md:px-6">
+      {/* Full-width row. On mobile the nav is icon-only so logo + all four
+          actions fit without clipping; labels appear at sm and up. */}
+      <div className="flex h-14 w-full items-center justify-between gap-2 px-3 md:px-6">
         <Logo />
-        <nav aria-label="Primary" className="flex items-center gap-1 sm:gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
-          >
-            <Link href="/main">
-              <Home className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
+        <nav aria-label="Primary" className="flex items-center gap-0.5 sm:gap-2">
+          <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3 text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors">
+            <Link href="/main" aria-label="Home">
+              <Home className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" aria-hidden="true" />
               <span className="hidden sm:inline">Home</span>
-              <span className="sm:hidden">Home</span>
             </Link>
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
-          >
-            <Link href="/profile">
-              <User className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
+          <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3 text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors">
+            <Link href="/profile" aria-label="Profile">
+              <User className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" aria-hidden="true" />
               <span className="hidden sm:inline">Profile</span>
-              <span className="sm:hidden">Profile</span>
             </Link>
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
-          >
-            <Link href="/planned-trips">
-              <ClipboardList className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
+          <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3 text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors">
+            <Link href="/planned-trips" aria-label="Planned trips">
+              <ClipboardList className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" aria-hidden="true" />
               <span className="hidden sm:inline">Planned Trips</span>
-              <span className="sm:hidden">Trips</span>
             </Link>
           </Button>
           <Button
@@ -79,11 +62,11 @@ export function Header() {
             size="sm"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
+            aria-label="Log out"
+            className="px-2 sm:px-3 text-primary-foreground hover:bg-primary/80 hover:text-white transition-colors"
           >
-            <LogOut className="mr-1 h-4 w-4 sm:mr-2" aria-hidden="true" />
+            <LogOut className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" aria-hidden="true" />
             <span className="hidden sm:inline">Logout</span>
-            <span className="sm:hidden">Exit</span>
           </Button>
         </nav>
       </div>
