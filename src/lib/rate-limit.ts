@@ -3,13 +3,8 @@
 //
 // CAVEAT: this is a per-process Map. On Vercel/Cloud Run/any multi-
 // instance deploy each lambda/container keeps its own counter, so the
-// effective limit is `limit * numberOfInstances`. That's fine for the
-// current scale (small app, cold-start dominated) but if we ever need a
-// hard guarantee - abuse throttle, paid-tier quotas, etc. - swap this
-// out for Upstash Redis or Firestore-backed counters. Also note that
-// the setInterval-based cleanup below only runs while the process is
-// warm; short-lived lambdas rely on the filter inside isRateLimited to
-// prune old timestamps.
+// effective limit is `limit * numberOfInstances`. For abuse-sensitive
+// endpoints use `isRateLimitedDurable` below instead.
 
 const store = new Map<string, number[]>();
 
@@ -24,7 +19,7 @@ setInterval(() => {
 }, 300_000);
 
 /**
- * Check if a request is rate-limited.
+ * Check if a request is rate-limited (in-memory, per-process).
  * @param key - Unique identifier (e.g. IP address or user ID)
  * @param limit - Max requests allowed in the window
  * @param windowMs - Time window in milliseconds (default: 60s)
@@ -43,4 +38,47 @@ export function isRateLimited(
   store.set(key, timestamps);
 
   return timestamps.length > limit;
+}
+
+/**
+ * Durable, cross-instance rate limiter backed by Firestore.
+ *
+ * The in-memory `isRateLimited` above is per-process, so on serverless each
+ * instance keeps its own counter and the effective limit is `limit ×
+ * instances`. For abuse-sensitive endpoints (session minting, account
+ * deletion) use this instead: it stores a fixed-window counter in
+ * `rateLimits/{key}` so the limit is enforced globally.
+ *
+ * Fails OPEN (returns false) on any Firestore error so an infra hiccup can't
+ * lock every user out of signing in.
+ */
+export async function isRateLimitedDurable(
+  key: string,
+  limit: number,
+  windowMs: number = 60_000,
+): Promise<boolean> {
+  const { adminDb } = await import('./firebase-admin');
+  const ref = adminDb.collection('rateLimits').doc(key.replace(/[/]/g, '_'));
+  const now = Date.now();
+
+  try {
+    return await adminDb.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists
+        ? (snap.data() as { windowStart?: number; count?: number })
+        : null;
+
+      if (!data?.windowStart || now - data.windowStart >= windowMs) {
+        tx.set(ref, { windowStart: now, count: 1, updatedAt: now });
+        return false;
+      }
+
+      const count = (data.count ?? 0) + 1;
+      tx.update(ref, { count, updatedAt: now });
+      return count > limit;
+    });
+  } catch (e) {
+    console.error('[isRateLimitedDurable] failed; failing open', e);
+    return false;
+  }
 }

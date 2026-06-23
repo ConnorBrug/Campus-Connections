@@ -50,6 +50,11 @@ functions/.env
 .firebase/
 firebase-debug.log
 
+# Firebase Auth / Firestore exports — never commit user data or password hashes
+temp.json
+*-export.json
+*.auth-export.json
+
 # editor / OS
 .vscode/
 .idea/

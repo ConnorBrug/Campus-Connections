@@ -5,6 +5,7 @@ import type { TripRequest } from './types';
 import { changePassword, deleteCurrentUserAccount } from './auth';
 import { addHours, isPast, parseISO } from 'date-fns';
 import { adminDb } from './firebase-admin';
+import { getServerUser } from './server-auth';
 
 /* --------------------------------------------------------------------
  * The `submitTripDetailsAction` server-action that used to live here was
@@ -12,15 +13,21 @@ import { adminDb } from './firebase-admin';
  * trips under that ID without cross-checking the session cookie. The
  * canonical path is now `POST /api/trips`, which reads `userId` from
  * `verifySessionCookie(...)` and is rate-limited + sanitized.
- *
- * If you need a server-action wrapper in the future, make it a thin
- * proxy over the API route rather than re-implementing the logic.
  * ------------------------------------------------------------------ */
 
-/* ------------------- Server getActiveTripForUser ------------------- */
+/* ------------------- Server getActiveTripForUser -------------------
+ * SECURITY: this is a server action (a public RPC endpoint). It must NEVER
+ * trust a client-supplied user id — doing so was an IDOR that leaked any
+ * user's email + flight schedule. The caller is identified solely by the
+ * session cookie. The optional argument is ignored and kept only so existing
+ * call sites compile unchanged. */
 
-export async function getActiveTripForUser(userId: string): Promise<TripRequest | null> {
+export async function getActiveTripForUser(_ignoredUserId?: string): Promise<TripRequest | null> {
   try {
+    const session = await getServerUser();
+    if (!session?.uid) return null;
+    const userId = session.uid;
+
     const tripsRef = adminDb.collection('tripRequests');
 
     const q = tripsRef
@@ -56,17 +63,8 @@ export async function getActiveTripForUser(userId: string): Promise<TripRequest 
 
 /* --------------------------------------------------------------------
  * Canonical cancel path: POST /api/trips/[id]/cancel
- *
- * The server-action that used to live here (`cancelTripAction`) was
- * removed because it diverged from the API route in several ways:
- *  - It deleted matched trips instead of soft-cancelling (losing
- *    the cancellation record needed for moderation).
- *  - It did not require a reason when leaving a match.
- *  - It was not rate-limited.
- *  - It only handled 2-person matches (requestIds index 0/1).
- * Nothing in the client was using it, so it was safe to drop. If you
- * need a server-action wrapper in the future, make it a thin proxy
- * over the API route rather than re-implementing the logic.
+ * The server-action that used to live here (`cancelTripAction`) was removed
+ * because it diverged from the API route. Use the API route instead.
  * ------------------------------------------------------------------ */
 
 /* ----------------------- changePasswordAction ----------------------- */

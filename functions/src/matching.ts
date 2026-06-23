@@ -109,90 +109,136 @@ export function computePairs(all: TripRequest[]): { pairs: [TripRequest, TripReq
 }
 
 /**
- * Writes a match document + updates all trip requests in a batch.
- * Works for 2, 3, or 4 riders.
+ * Atomically create a match for 2-4 riders.
+ *
+ * The pairing math runs against a snapshot of the pending pool, but two
+ * pairing runs (the noon + hourly crons, or a cron overlapping with the
+ * onTripCreated instant-match) can target the same trip. A plain WriteBatch
+ * is atomic but NOT conditional, so it would happily double-match a trip that
+ * another run already matched. This runs inside a transaction that re-reads
+ * every rider and ABORTS if any is missing or no longer `pending`, so the
+ * "still pending" check and the write commit are one atomic unit.
+ *
+ * Returns the match id on success, or null if the match was aborted (a rider
+ * was already taken) — callers should treat null as "skip notifications".
  */
-function writeMatchToBatch(
-  batch: FirebaseFirestore.WriteBatch,
+async function commitMatchAtomic(
   riders: TripRequest[],
   tier: MatchTier,
   reason: string,
-): { matchRef: FirebaseFirestore.DocumentReference; match: Match } {
-  const matchRef = db.collection('matches').doc();
+): Promise<string | null> {
+  const tripRefs = riders.map(r => db.collection('tripRequests').doc(r.id));
 
-  const participants: Match['participants'] = {};
-  for (const r of riders) {
-    participants[r.userId] = {
-      userId: r.userId,
-      userName: r.userName ?? 'User',
-      userPhotoUrl: r.userPhotoUrl ?? null,
-      university: r.university,
-      flightCode: r.flightCode,
-      flightDateTime: r.flightDateTime,
-    };
-  }
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snaps = await Promise.all(tripRefs.map(ref => tx.get(ref)));
 
-  const allSameFlight = riders.every(r => r.flightCode === riders[0].flightCode);
+      // Re-read inside the transaction: every rider must still exist and be
+      // pending, otherwise another run already claimed one of them.
+      const fresh: TripRequest[] = [];
+      for (const s of snaps) {
+        if (!s.exists) return null;
+        const data = { id: s.id, ...s.data() } as TripRequest;
+        if (data.status !== 'pending') return null;
+        fresh.push(data);
+      }
 
-  const match: Match = {
-    id: matchRef.id,
-    participantIds: riders.map(r => r.userId),
-    participants,
-    requestIds: riders.map(r => r.id),
-    university: riders[0].university,
-    campusArea: riders[0].campusArea ?? null,
-    departingAirport: riders[0].departingAirport,
-    flightCode: allSameFlight ? riders[0].flightCode : undefined,
-    assignedAtISO: isoNow(),
-    status: 'matched',
-    reason,
-    matchTier: tier,
-  };
+      const matchRef = db.collection('matches').doc();
+      const participants: Match['participants'] = {};
+      for (const r of fresh) {
+        participants[r.userId] = {
+          userId: r.userId,
+          userName: r.userName ?? 'User',
+          userPhotoUrl: r.userPhotoUrl ?? null,
+          university: r.university,
+          flightCode: r.flightCode,
+          flightDateTime: r.flightDateTime,
+        };
+      }
 
-  batch.set(matchRef, match);
+      const allSameFlight = fresh.every(r => r.flightCode === fresh[0].flightCode);
+      const match: Match = {
+        id: matchRef.id,
+        participantIds: fresh.map(r => r.userId),
+        participants,
+        requestIds: fresh.map(r => r.id),
+        university: fresh[0].university,
+        campusArea: fresh[0].campusArea ?? null,
+        departingAirport: fresh[0].departingAirport,
+        flightCode: allSameFlight ? fresh[0].flightCode : undefined,
+        assignedAtISO: isoNow(),
+        status: 'matched',
+        reason,
+        matchTier: tier,
+      };
+      tx.set(matchRef, match);
 
-  for (const r of riders) {
-    batch.update(db.collection('tripRequests').doc(r.id), {
-      status: 'matched',
-      matchId: matchRef.id,
-      matchedUserId: riders.find(x => x.userId !== r.userId)?.userId ?? null,
-      cancellationAlert: false,
-      fallbackTier: tier,
+      for (const r of fresh) {
+        tx.update(db.collection('tripRequests').doc(r.id), {
+          status: 'matched',
+          matchId: matchRef.id,
+          matchedUserId: fresh.find(x => x.userId !== r.userId)?.userId ?? null,
+          cancellationAlert: false,
+          fallbackTier: tier,
+        });
+      }
+
+      const chatId = fresh.map(r => r.userId).sort().join('_');
+      const chatRef = db.collection('chats').doc(chatId);
+      const lines = fresh.map(r => {
+        const dt = new Date(r.flightDateTime);
+        const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return `- ${r.userName ?? 'Rider'}: Flight ${r.flightCode} at ${timeStr}.`;
+      });
+      const systemMsg = [
+        'This is an automated message to start your coordination.',
+        '',
+        ...lines,
+        '',
+        'Recommendation: Plan to arrive at the airport at least 1 hour before the earlier flight\'s boarding time.',
+      ].join('\n');
+
+      tx.set(chatRef, {
+        userIds: fresh.map(r => r.userId),
+        lastMessage: 'Chat initiated.',
+        expiresAt: chatExpiryFromRiders(fresh),
+        typing: null,
+      }, { merge: true });
+
+      const msgRef = chatRef.collection('messages').doc();
+      tx.set(msgRef, {
+        text: systemMsg,
+        senderId: 'system',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return matchRef.id;
     });
+  } catch (e) {
+    console.error('[commitMatchAtomic] transaction failed', e);
+    return null;
   }
+}
 
-  const chatId = riders.map(r => r.userId).sort().join('_');
-  const chatRef = db.collection('chats').doc(chatId);
-
-  const lines = riders.map(r => {
-    const dt = new Date(r.flightDateTime);
-    const timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    return `- ${r.userName ?? 'Rider'}: Flight ${r.flightCode} at ${timeStr}.`;
-  });
-
-  const systemMsg = [
-    'This is an automated message to start your coordination.',
-    '',
-    ...lines,
-    '',
-    'Recommendation: Plan to arrive at the airport at least 1 hour before the earlier flight\'s boarding time.',
-  ].join('\n');
-
-  batch.set(chatRef, {
-    userIds: riders.map(r => r.userId),
-    lastMessage: 'Chat initiated.',
-    expiresAt: chatExpiryFromRiders(riders),
-    typing: null,
-  }, { merge: true });
-
-  const msgRef = chatRef.collection('messages').doc();
-  batch.set(msgRef, {
-    text: systemMsg,
-    senderId: 'system',
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  return { matchRef, match };
+/**
+ * Conditionally update a single trip's fallback flags, but only if it's still
+ * `pending` (so we never stamp xl/no-match flags onto a trip that a concurrent
+ * run just matched).
+ */
+async function markTripIfPending(
+  tripId: string,
+  fields: Record<string, unknown>,
+): Promise<void> {
+  const ref = db.collection('tripRequests').doc(tripId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists || (s.data() as TripRequest).status !== 'pending') return;
+      tx.update(ref, fields);
+    });
+  } catch (e) {
+    console.error('[markTripIfPending] transaction failed', tripId, e);
+  }
 }
 
 /**
@@ -360,74 +406,56 @@ export async function runPairingForWindow(hoursFrom: number, hoursTo: number) {
 
   const { pairs, unmatched } = computePairs(pending);
 
-  const batch = db.batch();
   let created = 0;
+  let fallbacks = 0;
+  // Only riders whose match actually committed (transaction not aborted) get
+  // notified, so we never email someone about a match that lost a race.
   const matchedTrips: TripRequest[][] = [];
 
+  // Each match commits in its own transaction that re-checks rider status, so
+  // a trip already claimed by a concurrent run is skipped instead of being
+  // double-matched. Done sequentially to keep contention low.
   for (const [a, b] of pairs) {
-    writeMatchToBatch(batch, [a, b], 'standard', 'Best available pair');
-    matchedTrips.push([a, b]);
-    created++;
+    const id = await commitMatchAtomic([a, b], 'standard', 'Best available pair');
+    if (id) { matchedTrips.push([a, b]); created++; }
   }
 
-  let fallbacks = 0;
   if (unmatched.length > 0) {
     const fb = computeFallbacks(unmatched, pending);
 
     for (const group of fb.groups) {
-      writeMatchToBatch(batch, group, 'group', `Light-bag group of ${group.length}`);
-      matchedTrips.push(group);
-      created++;
-      fallbacks++;
-    }
-
-    for (const t of fb.xlSuggested) {
-      batch.update(db.collection('tripRequests').doc(t.id), {
-        xlRideSuggested: true,
-        fallbackTier: 'xl-suggested',
-      });
-      fallbacks++;
+      const id = await commitMatchAtomic(group, 'group', `Light-bag group of ${group.length}`);
+      if (id) { matchedTrips.push(group); created++; fallbacks++; }
     }
 
     for (const [a, b] of fb.relaxedCampusPairs) {
-      writeMatchToBatch(batch, [a, b], 'relaxed-campus', 'Cross-campus match');
-      matchedTrips.push([a, b]);
-      created++;
-      fallbacks++;
+      const id = await commitMatchAtomic([a, b], 'relaxed-campus', 'Cross-campus match');
+      if (id) { matchedTrips.push([a, b]); created++; fallbacks++; }
     }
 
     for (const [a, b] of fb.relaxedTimePairs) {
-      writeMatchToBatch(batch, [a, b], 'relaxed-time', '2-hour window match');
-      matchedTrips.push([a, b]);
-      created++;
-      fallbacks++;
-    }
-
-    for (const t of fb.noMatchWarnings) {
-      batch.update(db.collection('tripRequests').doc(t.id), {
-        noMatchWarningSent: true,
-        fallbackTier: 'no-match',
-      });
-      fallbacks++;
+      const id = await commitMatchAtomic([a, b], 'relaxed-time', '2-hour window match');
+      if (id) { matchedTrips.push([a, b]); created++; fallbacks++; }
     }
 
     for (const t of fb.xlSuggested) {
+      await markTripIfPending(t.id, { xlRideSuggested: true, fallbackTier: 'xl-suggested' });
+      fallbacks++;
       sendXlRideSuggestion(t).catch(() => {});
     }
+
     for (const t of fb.noMatchWarnings) {
+      await markTripIfPending(t.id, { noMatchWarningSent: true, fallbackTier: 'no-match' });
+      fallbacks++;
       sendNoMatchNotification(t).catch(() => {});
     }
   }
 
-  if (created > 0 || unmatched.length > 0) {
-    await batch.commit();
-
-    for (const group of matchedTrips) {
-      for (const rider of group) {
-        const partners = group.filter(x => x.userId !== rider.userId);
-        if (partners.length > 0) {
-          sendMatchNotification(rider, partners[0]).catch(() => {});
-        }
+  for (const group of matchedTrips) {
+    for (const rider of group) {
+      const partners = group.filter(x => x.userId !== rider.userId);
+      if (partners.length > 0) {
+        sendMatchNotification(rider, partners[0]).catch(() => {});
       }
     }
   }

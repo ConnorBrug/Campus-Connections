@@ -54,8 +54,6 @@ export async function POST(req: Request) {
     }
 
     // Sanitize user-controllable strings before they land in Firestore.
-    // sanitizeStrict drops control/zero-width/RTL tricks and non-name-shaped
-    // characters, collapses whitespace, and caps length.
     const cleanFlightCode = sanitizeStrict(flightCode, 10).toUpperCase();
     const cleanAirport = sanitizeStrict(departingAirport, 10).toUpperCase();
     const cleanCampusArea = campusArea == null ? null : sanitizeStrict(campusArea, 40) || null;
@@ -84,6 +82,24 @@ export async function POST(req: Request) {
     if (user.isBanned) {
       return NextResponse.json({ message: 'Your account is suspended from creating new trips.' }, { status: 403 });
     }
+
+    // One active trip per user. Without this guard a user can stack many
+    // pending trips, polluting the matching pool and getting matched multiple
+    // times. (Rules make trips read-only client-side, so this server check is
+    // the single enforcement point.)
+    const activeSnap = await adminDb
+      .collection('tripRequests')
+      .where('userId', '==', uid)
+      .where('status', 'in', ['pending', 'matched'])
+      .limit(1)
+      .get();
+    if (!activeSnap.empty) {
+      return NextResponse.json(
+        { message: 'You already have an active trip. Cancel it before creating a new one.' },
+        { status: 409 },
+      );
+    }
+
     const tripRef = adminDb.collection('tripRequests').doc();
     const newTrip = {
       id: tripRef.id,

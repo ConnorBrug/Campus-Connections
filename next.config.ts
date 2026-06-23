@@ -17,17 +17,6 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["firebase-admin"],
 
   async headers() {
-    // Content-Security-Policy is intentionally somewhat permissive:
-    //   - 'unsafe-inline' + 'unsafe-eval' on script-src because Next.js inlines
-    //     framework bootstrap and Firebase Auth's popup flow currently relies
-    //     on eval in some code paths. Tighten with nonces later.
-    //   - img-src is scoped to the storage + OAuth hosts we actually render,
-    //     plus data:/blob: for inline previews. Previously 'https:' allowed
-    //     any HTTPS host, which meant a compromised or outdated server-
-    //     rendered profile could embed images from attacker-controlled
-    //     domains (exfil / tracking).
-    //   - connect-src is similarly scoped to the APIs the Firebase JS SDK
-    //     talks to rather than the entire googleapis.com tree.
     const csp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://login.microsoftonline.com",

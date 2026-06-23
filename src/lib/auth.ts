@@ -24,11 +24,11 @@ import {
 import { emailToUniversityName } from './universities';
 import {
   doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs,
-  runTransaction, writeBatch, limit, addDoc, serverTimestamp, onSnapshot, deleteDoc
+  runTransaction, limit, addDoc, serverTimestamp, onSnapshot
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from './firebase';
-import type { UserProfile, TripRequest, FlaggedEntry, Match, FirestoreTimestamp } from './types';
+import type { UserProfile, TripRequest, Match } from './types';
 import { differenceInHours, parseISO, isPast, differenceInMinutes, format, addHours } from 'date-fns';
 import { normalizeName } from './utils';
 import { sanitizeStrict, sanitizeText } from './sanitize';
@@ -517,12 +517,14 @@ export async function sendVerificationEmailAgain(): Promise<void> {
 
 /* ------------------------------ trips ---------------------------------- */
 
-export async function saveTripRequest(tripData: Omit<TripRequest, 'id' | 'createdAt'>): Promise<TripRequest> {
-  const docRef = doc(collection(db, 'tripRequests'));
-  const newTrip: TripRequest = { ...tripData, id: docRef.id, createdAt: serverTimestamp() as FirestoreTimestamp };
-  await setDoc(docRef, newTrip);
-  return newTrip;
-}
+/*
+ * NOTE: trip *writes* are server-only. Creation goes through POST /api/trips
+ * and mutations through the cancel/delay/manual-match routes (all Admin SDK).
+ * The Firestore rules make tripRequests read-only for clients, so the old
+ * client-side `saveTripRequest` / `updateTripStatus` helpers were removed —
+ * they would now always fail with permission-denied and let callers skip the
+ * server-side sanitization, ban checks, and bag-limit caps.
+ */
 
 export async function getTripById(tripId: string): Promise<TripRequest | null> {
   const docRef = doc(db, 'tripRequests', tripId);
@@ -595,25 +597,6 @@ export function findBestMatch(
   return { bestMatch: eligible[0], reasoning };
 }
 
-export async function updateTripStatus(
-  tripId: string,
-  status: TripRequest['status'],
-  matchId?: string,
-  _matchedUserId?: string,
-  cancellationAlert?: boolean
-): Promise<void> {
-  const tripRef = doc(db, 'tripRequests', tripId);
-  if (status === 'cancelled') {
-    await deleteDoc(tripRef);
-    return;
-  }
-  const updateData: Partial<TripRequest> = { status };
-  if (status === 'matched' && matchId) updateData.matchId = matchId;
-  if (status === 'pending') updateData.matchId = null;
-  if (cancellationAlert !== undefined) updateData.cancellationAlert = cancellationAlert;
-  await updateDoc(tripRef, updateData);
-}
-
 /* ------------------------------ chat/flags ------------------------------ */
 
 export function getChatId(...userIds: string[]): string {
@@ -672,53 +655,37 @@ export async function getFlaggedUsersForUser(userId: string): Promise<string[]> 
   return user?.flaggedUserIds || [];
 }
 
-export async function flagUser(flaggerId: string, flaggedUserId: string, reason: string): Promise<void> {
+/**
+ * Flag a user for abuse. Delegates to the server route `POST /api/flags`,
+ * which performs the write with the Admin SDK. Doing this on the client via
+ * the Firestore SDK is intentionally blocked by the security rules (`flags`
+ * and the `isBanned` field are Admin-only), so the previous client-side
+ * implementation always failed with permission-denied.
+ *
+ * `_flaggerId` is accepted for backwards compatibility but ignored — the
+ * server derives the flagger from the authenticated session cookie.
+ */
+export async function flagUser(_flaggerId: string, flaggedUserId: string, reason: string): Promise<void> {
   const cleanedReason = reason.trim();
   if (!cleanedReason) {
     throw new Error('A reason is required to submit a flag.');
   }
-  if (flaggerId === flaggedUserId) {
-    throw new Error('You cannot flag yourself.');
+
+  const res = await fetch('/api/flags', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ flaggedUserId, reason: cleanedReason }),
+  });
+
+  if (!res.ok) {
+    let msg = 'Failed to submit flag. Please try again.';
+    try {
+      const d = await res.json();
+      if (d?.message) msg = d.message;
+    } catch {}
+    throw new Error(msg);
   }
-
-  const duplicateQuery = query(
-    collection(db, 'flags'),
-    where('flaggerId', '==', flaggerId),
-    where('flaggedUserId', '==', flaggedUserId),
-    limit(1)
-  );
-  const duplicateSnap = await getDocs(duplicateQuery);
-  if (!duplicateSnap.empty) {
-    throw new Error('You have already flagged this user.');
-  }
-
-  const batch = writeBatch(db);
-
-  const flagRef = doc(collection(db, 'flags'));
-  const flagData: FlaggedEntry = {
-    flaggerId,
-    flaggedUserId,
-    reason: cleanedReason,
-    timestamp: serverTimestamp() as FirestoreTimestamp
-  };
-  batch.set(flagRef, flagData);
-
-  const flaggerRef = doc(db, 'users', flaggerId);
-  const flaggerProfile = await getUserProfile(flaggerId);
-  const updated = Array.from(new Set([...(flaggerProfile?.flaggedUserIds || []), flaggedUserId]));
-  batch.update(flaggerRef, { flaggedUserIds: updated });
-
-  const flagsQuery = query(collection(db, 'flags'), where('flaggedUserId', '==', flaggedUserId));
-  const flagsSnapshot = await getDocs(flagsQuery);
-  const uniqueFlaggers = new Set<string>(flagsSnapshot.docs.map((d) => (d.data() as { flaggerId?: string }).flaggerId).filter(Boolean) as string[]);
-  uniqueFlaggers.add(flaggerId);
-
-  if (uniqueFlaggers.size >= 3) {
-    const flaggedUserRef = doc(db, 'users', flaggedUserId);
-    batch.update(flaggedUserRef, { isBanned: true });
-  }
-
-  await batch.commit();
 }
 
 export async function deleteCurrentUserAccount(): Promise<void> {

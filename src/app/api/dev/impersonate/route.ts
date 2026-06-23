@@ -4,26 +4,11 @@
  * POST /api/dev/impersonate  { uid: string }
  *   → mints a __session cookie for the target user so the browser is now
  *     signed in as them. Also returns a customToken so the client-side
- *     Firebase SDK can be signed in via signInWithCustomToken (the __session
- *     cookie alone leaves auth.currentUser === null, which breaks any
- *     client-side Firestore read whose rules check request.auth.uid).
+ *     Firebase SDK can be signed in via signInWithCustomToken.
  *
  * Hard constraints (ALL must hold, or the route 404s):
- *   1. process.env.NODE_ENV !== 'production'
+ *   1. process.env.NODE_ENV === 'development'
  *   2. The target user's /users/{uid} doc exists AND has `synthetic === true`.
- *      This guarantees this route can never be used to hijack a real account,
- *      even if something else went wrong in the build.
- *
- * The endpoint is not documented anywhere outside the dev dashboard, but the
- * NODE_ENV gate is the real seatbelt.
- *
- * Flow:
- *   1. Verify env + synthetic flag.
- *   2. Admin SDK: createCustomToken(uid).
- *   3. Exchange the custom token for an ID token via Identity Toolkit REST.
- *   4. createSessionCookie(idToken) → set as __session cookie.
- *   5. Return { ok, impersonating, name, customToken } so the caller can
- *      also sign the client SDK in.
  */
 
 import { NextResponse } from 'next/server';
@@ -32,7 +17,10 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin';
 const COOKIE_NAME = '__session';
 
 export async function POST(req: Request) {
-  if (process.env.NODE_ENV === 'production') {
+  // Only available in local development. Using `!== 'development'` (rather than
+  // `=== 'production'`) means any non-dev environment (staging/test/preview
+  // where NODE_ENV may not be 'production') also 404s.
+  if (process.env.NODE_ENV !== 'development') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
@@ -57,8 +45,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Make sure the Auth user exists (synthetic users created by the seed
-    //    script only write Firestore docs, not Auth users). createUser is
-    //    idempotent-ish: if it 409s, we fall through to getUser.
+    //    script only write Firestore docs, not Auth users).
     try {
       await adminAuth.createUser({
         uid,
@@ -77,8 +64,6 @@ export async function POST(req: Request) {
     const customToken = await adminAuth.createCustomToken(uid);
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) {
-      // Should be unreachable once env is required at bundle time, but fail
-      // loud rather than silently downgrading to a hardcoded value.
       return NextResponse.json(
         { error: 'Server misconfigured: NEXT_PUBLIC_FIREBASE_API_KEY missing' },
         { status: 500 },
@@ -94,9 +79,6 @@ export async function POST(req: Request) {
       },
     );
     if (!tokenRes.ok) {
-      // Don't echo Identity Toolkit's error body back to the caller - it
-      // can contain internal details. Log server-side, return a generic
-      // message.
       const errBody = await tokenRes.text().catch(() => '');
       console.error('[impersonate] token exchange failed', { status: tokenRes.status, body: errBody });
       return NextResponse.json(
@@ -110,11 +92,6 @@ export async function POST(req: Request) {
     const expiresIn = 5 * 24 * 60 * 60 * 1000;
     const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
-    // Return customToken too so the /dev/test page can sign the *client* SDK
-    // in via signInWithCustomToken. Without it only the server __session
-    // cookie is set, and client-side Firestore queries (e.g. the dashboard's
-    // getActiveTripForUser) get rejected by rules because auth.currentUser
-    // is still null.
     const res = NextResponse.json({
       ok: true,
       impersonating: uid,
@@ -132,9 +109,6 @@ export async function POST(req: Request) {
     });
     return res;
   } catch (err) {
-    // Log server-side, return a generic message to the client. Echoing
-    // err.message can leak stack-trace-ish details (e.g. "No such file
-    // /var/run/secrets/...") from Admin SDK.
     console.error('POST /api/dev/impersonate error:', err);
     return NextResponse.json(
       { error: 'Impersonation failed' },

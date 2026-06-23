@@ -32,6 +32,30 @@ export function emailToUniversityName(email: string): string | null {
   return null;
 }
 
+/**
+ * Emails explicitly allowed despite not matching a university domain.
+ * Configured via NEXT_PUBLIC_EMAIL_WHITELIST (comma-separated). This env var
+ * is readable on both client and server.
+ */
+const EMAIL_WHITELIST = new Set<string>(
+  (process.env.NEXT_PUBLIC_EMAIL_WHITELIST ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+/**
+ * Single source of truth for "is this email allowed to use the app?".
+ * Used client-side (signup/login UX) AND server-side (session minting) so the
+ * university restriction can't be bypassed by calling the Firebase Auth REST
+ * API directly. Returns true for a recognized university domain or a
+ * whitelisted address.
+ */
+export function isAllowedEmail(email: string): boolean {
+  const e = (email || '').toLowerCase();
+  return EMAIL_WHITELIST.has(e) || emailToUniversityName(e) !== null;
+}
+
 /** Returns the config for a given university name, or undefined. */
 export function getUniversityConfig(name: string): UniversityConfig | undefined {
   return UNIVERSITIES.find((u) => u.name === name);

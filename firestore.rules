@@ -3,19 +3,36 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() { return request.auth != null; }
 
-    /* -------- USERS (allow owner to read/write) -------- */
+    /* -------- USERS (owner read; constrained owner update) --------
+       Owners may edit ONLY their self-service profile fields. Security/
+       moderation-controlled fields (isBanned, flaggedUserIds, synthetic)
+       and identity fields (email, university) are frozen at the rule level
+       and may be written only via the Admin SDK (server routes / functions),
+       which bypasses these rules. This prevents ban-evasion (self-unban),
+       school-spoofing, and tampering with the dev `synthetic` flag. */
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || request.auth.token.admin == true);
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['name', 'campusArea', 'gender', 'graduationYear', 'photoUrl', 'emailVerified', 'authProvider'])
+                    && (!('isBanned' in request.resource.data) || request.resource.data.isBanned == resource.data.isBanned)
+                    && (!('flaggedUserIds' in request.resource.data) || request.resource.data.flaggedUserIds == resource.data.flaggedUserIds)
+                    && (!('synthetic' in request.resource.data) || request.resource.data.synthetic == resource.data.synthetic)
+                    && (!('email' in request.resource.data) || request.resource.data.email == resource.data.email)
+                    && (!('university' in request.resource.data) || request.resource.data.university == resource.data.university);
       allow delete: if false;
     }
 
-    /* -------- TRIPS -------- */
+    /* -------- TRIPS (server-managed writes; owner-gated read) --------
+       All trip writes go through the Admin SDK (POST /api/trips, the
+       cancel/delay/manual-match routes, and the matching Cloud Functions),
+       which bypass these rules. Clients are read-only so they cannot skip
+       the server-side sanitization, ban checks, bag-limit caps, and
+       server-derived identity fields. */
     match /tripRequests/{id} {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
-      allow update, delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create, update, delete: if false;
     }
 
     /* -------- GROUPS (server-managed) -------- */
@@ -37,13 +54,18 @@ service cloud.firestore {
     }
 
     /* -------- FLAGS / CANCELLATIONS (Admin SDK only) --------
-       Written by server routes (flagUser, cancel flows). Clients may not
-       read; admin escape hatch only. */
+       Written by server routes (POST /api/flags, cancel flows). Clients may
+       not read; admin escape hatch only. */
     match /flags/{id} {
       allow read, write: if request.auth.token.admin == true;
     }
     match /cancellations/{id} {
       allow read, write: if request.auth.token.admin == true;
+    }
+
+    /* -------- RATE LIMITS (Admin SDK only) -------- */
+    match /rateLimits/{id} {
+      allow read, write: if false;
     }
 
     /* -------- SETTINGS (admin-managed) -------- */
@@ -59,11 +81,6 @@ service cloud.firestore {
     function isChatParticipant(chatId) {
       return isSignedIn() && request.auth.uid in chatDoc(chatId).data.userIds;
     }
-    /* Require expiresAt to exist (every chat creation path writes it; see
-       functions/src/matching.ts, functions/src/index.ts, and
-       src/lib/auth.ts#initiateChat). If a legacy chat without expiresAt
-       exists, writes will fail - backfill via a one-off admin script rather
-       than loosening this rule. */
     function chatIsOpen(chatId) {
       return 'expiresAt' in chatDoc(chatId).data
              && request.time < chatDoc(chatId).data.expiresAt;
@@ -71,11 +88,6 @@ service cloud.firestore {
 
     match /chats/{chatId} {
       allow read: if isChatParticipant(chatId);
-      // expiresAt is what drives the chat-TTL eviction and the
-      // chatIsOpen(chatId) gate on the messages subcollection. Without
-      // it, a chat would be immortal + orphan-able. Require it on
-      // create, and require every update to keep it present (so
-      // participants can't delete the field to extend the chat forever).
       allow create: if isSignedIn()
                     && request.resource.data.userIds is list
                     && request.resource.data.userIds.size() >= 2

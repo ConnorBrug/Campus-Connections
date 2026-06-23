@@ -9,3 +9,8 @@ firebase.json
 cors.json
 docs/
 scripts/
+
+# Never ship data exports / auth dumps in the deployment bundle
+temp.json
+*-export.json
+*.auth-export.json

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { adminAuth } from '@/lib/firebase-admin';
-import { isRateLimited } from '@/lib/rate-limit';
+import { isRateLimitedDurable } from '@/lib/rate-limit';
 import { assertSameOrigin } from '@/lib/csrf';
+import { isAllowedEmail } from '@/lib/universities';
 
 const COOKIE_NAME = '__session';
 
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
   if (csrf) return csrf;
 
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
-  if (isRateLimited(`session:${ip}`, 10, 60_000)) {
+  if (await isRateLimitedDurable(`session:${ip}`, 10, 60_000)) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   }
 
@@ -25,7 +26,6 @@ export async function POST(req: Request) {
     //  - rejects tampered / expired tokens,
     //  - forces the token to be freshly minted (2nd arg = checkRevoked),
     //  - lets us enforce email verification before the user gets a cookie.
-    // `createSessionCookie` does not itself gate on email_verified.
     let decoded;
     try {
       decoded = await adminAuth.verifyIdToken(idToken, true);
@@ -40,10 +40,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // Require the ID token to be freshly issued (<= 5 min old). This
-    // guarantees the user recently proved possession of their password or
-    // OAuth session, matching Firebase's own recommendation for cookie
-    // creation.
+    // Enforce the university/whitelist restriction HERE, not just in the
+    // browser. The client-side checks in src/lib/auth.ts are UX only - an
+    // attacker can register any email via the Firebase Auth REST API (the web
+    // API key is public by design) and reach this route directly. Gating the
+    // session cookie on an allowed email domain is the real boundary.
+    if (!isAllowedEmail(decoded.email ?? '')) {
+      return NextResponse.json(
+        { error: 'This email is not eligible for Campus Connections.' },
+        { status: 403 },
+      );
+    }
+
+    // Require the ID token to be freshly issued (<= 5 min old).
     const authTimeMs = (decoded.auth_time ?? 0) * 1000;
     if (!authTimeMs || Date.now() - authTimeMs > 5 * 60 * 1000) {
       return NextResponse.json(
